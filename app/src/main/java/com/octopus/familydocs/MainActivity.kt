@@ -83,8 +83,9 @@ private fun FamilyHome() {
     val scroll = rememberScrollState()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val added = uris.mapNotNull { importFile(context, it, importCategory, selected) }
-        docs = docs + added
-        writeDocs(prefs, docs)
+        val updatedDocs = docs + added
+        docs = updatedDocs
+        writeDocs(prefs, updatedDocs)
     }
 
     Box(Modifier.fillMaxSize().background(ScreenBg)) {
@@ -253,26 +254,41 @@ private fun matchesCategory(stored: String, display: String): Boolean = stored =
     "Other Documents" -> stored == "家庭资料" || stored == "其他证件"
     else -> false
 }
-private fun readMembers(prefs: android.content.SharedPreferences): List<String> = try {
-    val raw = prefs.getString("members", null) ?: return listOf("Juliet", "Kevin", "Martha", "James")
-    val a = JSONArray(raw); (0 until a.length()).map { a.getString(it) }.ifEmpty { listOf("Juliet", "Kevin", "Martha", "James") }
-} catch (_: Exception) { listOf("Juliet", "Kevin", "Martha", "James") }
-private fun readCategories(prefs: android.content.SharedPreferences): List<String> = try {
+private fun readMembers(prefs: android.content.SharedPreferences): List<String> {
+    return try {
+        val raw = prefs.getString("members", null) ?: return listOf("Juliet", "Kevin", "Martha", "James")
+        val a = JSONArray(raw)
+        (0 until a.length()).map { a.getString(it) }.ifEmpty { listOf("Juliet", "Kevin", "Martha", "James") }
+    } catch (_: Exception) {
+        listOf("Juliet", "Kevin", "Martha", "James")
+    }
+}
+private fun readCategories(prefs: android.content.SharedPreferences): List<String> {
     val defaults = listOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents")
-    val raw = prefs.getString("categories", null) ?: return defaults
-    val a = JSONArray(raw); (0 until a.length()).map { a.getString(it) }.ifEmpty { defaults }
-} catch (_: Exception) { listOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents") }
+    return try {
+        val raw = prefs.getString("categories", null) ?: return defaults
+        val a = JSONArray(raw)
+        (0 until a.length()).map { a.getString(it) }.ifEmpty { defaults }
+    } catch (_: Exception) {
+        defaults
+    }
+}
 
-private fun importFile(context: Context, uri: Uri, category: String, owner: String): Doc? = try {
-    val name = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-        val i = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME); if (cursor.moveToFirst() && i >= 0) cursor.getString(i) else null
-    } ?: "document"
-    val dir = File(context.filesDir, "documents").apply { mkdirs() }
-    val target = File(dir, System.currentTimeMillis().toString() + "_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-    val input = context.contentResolver.openInputStream(uri) ?: return null
-    input.use { stream -> target.outputStream().use { output -> stream.copyTo(output) } }
-    Doc(name, target.absolutePath, category, owner)
-} catch (_: Exception) { null }
+private fun importFile(context: Context, uri: Uri, category: String, owner: String): Doc? {
+    return try {
+        val name = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val i = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && i >= 0) cursor.getString(i) else null
+        } ?: "document"
+        val dir = File(context.filesDir, "documents").apply { mkdirs() }
+        val target = File(dir, System.currentTimeMillis().toString() + "_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        input.use { stream -> target.outputStream().use { output -> stream.copyTo(output) } }
+        Doc(name, target.absolutePath, category, owner)
+    } catch (_: Exception) {
+        null
+    }
+}
 private fun readDocs(prefs: android.content.SharedPreferences): List<Doc> = try {
     val a = JSONArray(prefs.getString("docs", "[]"))
     (0 until a.length()).map { a.getJSONObject(it).let { o -> Doc(o.getString("name"), o.getString("path"), o.getString("category"), o.getString("owner")) } }.filter { File(it.path).exists() }
