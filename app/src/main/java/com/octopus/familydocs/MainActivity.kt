@@ -150,19 +150,24 @@ private class WaveShape : Shape {
         return androidx.compose.ui.graphics.Outline.Generic(p)
     }
 }
-private fun readMembers(prefs: android.content.SharedPreferences): List<String> = try {
-    val a = JSONArray(prefs.getString("members", null) ?: return listOf("我", "伴侣", "孩子"))
-    (0 until a.length()).map { a.getString(it) }
-} catch (_: Exception) { listOf("我", "伴侣", "孩子") }
-private fun importFile(context: Context, uri: Uri, category: String, owner: String): Doc? = try {
-    val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-        val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME); if (c.moveToFirst() && i >= 0) c.getString(i) else null
-    } ?: "document"
-    val dir = File(context.filesDir, "documents").apply { mkdirs() }
-    val target = File(dir, System.currentTimeMillis().toString() + "_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
-    context.contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { output -> input.copyTo(output) } } ?: return null
-    Doc(name, target.absolutePath, category, owner)
-} catch (_: Exception) { null }
+private fun readMembers(prefs: android.content.SharedPreferences): List<String> {
+    return try {
+        val a = JSONArray(prefs.getString("members", null) ?: return listOf("我", "伴侣", "孩子"))
+        (0 until a.length()).map { a.getString(it) }
+    } catch (_: Exception) { listOf("我", "伴侣", "孩子") }
+}
+private fun importFile(context: Context, uri: Uri, category: String, owner: String): Doc? {
+    return try {
+        val name = context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+            val i = c.getColumnIndex(OpenableColumns.DISPLAY_NAME); if (c.moveToFirst() && i >= 0) c.getString(i) else null
+        } ?: "document"
+        val dir = File(context.filesDir, "documents").apply { mkdirs() }
+        val target = File(dir, System.currentTimeMillis().toString() + "_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        val input = context.contentResolver.openInputStream(uri) ?: return null
+        input.use { stream -> target.outputStream().use { output -> stream.copyTo(output) } }
+        Doc(name, target.absolutePath, category, owner)
+    } catch (_: Exception) { null }
+}
 private fun readDocs(prefs: android.content.SharedPreferences): List<Doc> = try {
     val a = JSONArray(prefs.getString("docs", "[]"))
     (0 until a.length()).map { a.getJSONObject(it).let { o -> Doc(o.getString("name"), o.getString("path"), o.getString("category"), o.getString("owner")) } }.filter { File(it.path).exists() }
