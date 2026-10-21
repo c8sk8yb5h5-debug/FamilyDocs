@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -81,6 +83,7 @@ private fun FamilyHome() {
     var memberText by remember { mutableStateOf("") }
     var folderText by remember { mutableStateOf("") }
     val scroll = rememberScrollState()
+    val scope = rememberCoroutineScope()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val added = uris.mapNotNull { importFile(context, it, importCategory, selected) }
         val updatedDocs = docs + added
@@ -93,7 +96,7 @@ private fun FamilyHome() {
             Spacer(Modifier.height(8.dp))
             Surface(color = HeaderBg, shape = RoundedCornerShape(42.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.height(76.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Dashboard, "Home", Modifier.size(28.dp).clickable { scroll.animateScrollTo(0) }, tint = Color.White)
+                    Icon(Icons.Filled.Dashboard, "Home", Modifier.size(28.dp).clickable { scope.launch { scroll.animateScrollTo(0) } }, tint = Color.White)
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("Family Documents", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text(docs.size.toString() + " Documents", color = Color.LightGray, fontSize = 12.sp)
