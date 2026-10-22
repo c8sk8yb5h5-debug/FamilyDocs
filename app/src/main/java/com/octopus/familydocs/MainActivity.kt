@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -178,38 +179,93 @@ private fun DocumentWaveCard(
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val scale by animateFloatAsState(if (pressed) .985f else if (expanded) 1f else .992f, spring(dampingRatio = .72f, stiffness = 360f), label = "card-scale")
-    Surface(color = tint, shape = StackWave(index), modifier = Modifier.fillMaxWidth().offset(y = if (index == 0) 0.dp else (-17).dp).zIndex(index.toFloat()).scale(scale).animateContentSize(spring(dampingRatio = .78f, stiffness = 260f))) {
-        Column(Modifier.clickable(interactionSource = source, indication = null, onClick = onClick).padding(start = 20.dp, end = 16.dp, top = 25.dp, bottom = 20.dp)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 62.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = Color(0xFFF9F9F6), shape = CircleShape, modifier = Modifier.size(48.dp)) {
-                    Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = Ink, modifier = Modifier.size(26.dp)) }
+    val scale by animateFloatAsState(
+        if (pressed) .985f else if (expanded) 1f else .995f,
+        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 360f),
+        label = "wallet-card-scale"
+    )
+    val cardShape = RoundedCornerShape(26.dp)
+    val gradient = when (index % 5) {
+        0 -> listOf(Color(0xFFE0F8FC), Color(0xFF9EDDE9), Color(0xFFB8EAF0))
+        1 -> listOf(Color(0xFFE0FFF4), Color(0xFF9CE6D1), Color(0xFFB5F0DF))
+        2 -> listOf(Color(0xFFFFF1C9), Color(0xFFFFDFA0), Color(0xFFFFEAC0))
+        3 -> listOf(Color(0xFFF7E4F0), Color(0xFFE8C3DD), Color(0xFFF1D8E8))
+        else -> listOf(Color(0xFFF8F7F1), Color(0xFFE5E3DA), Color(0xFFF2F0E7))
+    }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .offset(y = if (index == 0) 0.dp else (-28).dp)
+            .zIndex(index.toFloat())
+            .scale(scale)
+            .padding(horizontal = 1.dp)
+            .clip(cardShape)
+            .background(Brush.linearGradient(gradient))
+            .animateContentSize(spring(dampingRatio = .78f, stiffness = 260f))
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
+    ) {
+        // Subtle decorative sheen makes each category feel like a physical wallet card.
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 12.dp, end = 14.dp)
+                .size(width = 126.dp, height = 76.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(Color.White.copy(alpha = .13f))
+        )
+        Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 16.dp, top = 22.dp, bottom = 18.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 66.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    color = Color.White.copy(alpha = .9f),
+                    shape = CircleShape,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(icon, null, tint = Ink, modifier = Modifier.size(25.dp))
+                    }
                 }
-                Spacer(Modifier.width(28.dp))
+                Spacer(Modifier.width(18.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(name, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(3.dp))
-                    Text(count.toString().padStart(2, '0') + " Documents", color = Ink.copy(alpha = .84f), fontSize = 12.sp)
+                    Text(name, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(4.dp))
+                    Text("$count Documents", color = Ink.copy(alpha = .78f), fontSize = 12.sp)
                 }
                 if (index == 0 || name == "Personal Documents") {
-                    Surface(color = Color(0xFFF9F9F6), shape = CircleShape, modifier = Modifier.size(38.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Lock, "Stored locally", tint = Ink, modifier = Modifier.size(21.dp)) }
+                    Surface(color = Color.White.copy(alpha = .88f), shape = CircleShape, modifier = Modifier.size(34.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Lock, "Stored locally", tint = Ink, modifier = Modifier.size(19.dp))
+                        }
                     }
                 }
             }
-            AnimatedVisibility(visible = expanded, enter = expandVertically(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 260f)) + fadeIn(), exit = shrinkVertically(spring(dampingRatio = .9f, stiffness = 300f)) + fadeOut()) {
-                Column(Modifier.fillMaxWidth().padding(start = 62.dp, top = 8.dp, bottom = 4.dp)) {
-                    if (documents.isEmpty()) Text("No documents yet", color = Ink.copy(alpha = .72f), fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 260f)) + fadeIn(),
+                exit = shrinkVertically(spring(dampingRatio = .9f, stiffness = 300f)) + fadeOut()
+            ) {
+                Column(Modifier.fillMaxWidth().padding(start = 60.dp, top = 10.dp, bottom = 4.dp)) {
+                    if (documents.isEmpty()) {
+                        Text("No cards yet", color = Ink.copy(alpha = .72f), fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    }
                     documents.forEach { doc ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Description, null, tint = Ink, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Filled.CreditCard, null, tint = Ink, modifier = Modifier.size(20.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(doc.name, color = Ink, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { onDelete(doc) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 0.dp)) { Text("Delete", color = Ink, fontSize = 11.sp) }
+                            TextButton(onClick = { onDelete(doc) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 0.dp)) {
+                                Text("Delete", color = Ink, fontSize = 11.sp)
+                            }
                         }
                     }
-                    Button(onClick = onImport, shape = RoundedCornerShape(50.dp), colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text("Add Document", fontSize = 12.sp)
+                    Button(
+                        onClick = onImport,
+                        shape = RoundedCornerShape(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Add Card / Document", fontSize = 12.sp)
                     }
                 }
             }
