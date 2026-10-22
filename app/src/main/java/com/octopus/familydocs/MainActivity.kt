@@ -30,6 +30,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -223,12 +226,12 @@ private fun FamilyHome() {
             Spacer(Modifier.height(8.dp))
             Surface(color = HeaderBg, shape = RoundedCornerShape(42.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.height(76.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Dashboard, "Home", Modifier.size(28.dp).clickable { scope.launch { scroll.animateScrollTo(0) } }, tint = Color.White)
+                    Icon(Icons.Filled.Dashboard, "首页", Modifier.size(28.dp).clickable { scope.launch { scroll.animateScrollTo(0) } }, tint = Color.White)
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Family Documents", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text(docs.size.toString() + " Documents", color = Color.LightGray, fontSize = 12.sp)
+                        Text("家庭证件夹", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text("共 " + docs.size + " 张证件", color = Color.LightGray, fontSize = 12.sp)
                     }
-                    Icon(Icons.Filled.Settings, "Settings", Modifier.size(28.dp).clickable { showSettings = true }, tint = Color.White)
+                    Icon(Icons.Filled.Settings, "设置", Modifier.size(28.dp).clickable { showSettings = true }, tint = Color.White)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -247,9 +250,9 @@ private fun FamilyHome() {
                 }
                 Column(Modifier.width(60.dp).clickable { memberText = ""; addMember = true }, horizontalAlignment = Alignment.CenterHorizontally) {
                     Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.size(52.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "Add member", tint = Color.White, modifier = Modifier.size(26.dp)) }
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
                     }
-                    Text("Add a Member", color = Color.LightGray, fontSize = 10.sp, lineHeight = 12.sp)
+                    Text("添加家庭成员", color = Color.LightGray, fontSize = 10.sp, lineHeight = 12.sp)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -258,21 +261,56 @@ private fun FamilyHome() {
             ) {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
-                Box(Modifier.fillMaxWidth().height(cardHeight + stackStep * (categories.size - 1))) {
-                    categories.forEachIndexed { index, category ->
+                val visibleCategories = categories.filter { category ->
+                    docs.any { it.owner == selected && matchesCategory(it.category, category) }
+                }
+                val ordered = if (expanded != null && expanded in visibleCategories) {
+                    listOf(expanded!!) + visibleCategories.filterNot { it == expanded }
+                } else visibleCategories
+                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else cardHeight + stackStep * (ordered.size - 1))) {
+                    if (ordered.isEmpty()) {
+                        Text("还没有证件。点击右下角加号，导入银行卡或身份证照片。", color = Color.LightGray, modifier = Modifier.align(Alignment.Center).padding(20.dp))
+                    }
+                    ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                        var dragDistance by remember(category) { mutableFloatStateOf(0f) }
                         WalletCategoryCard(
                             name = category,
                             count = categoryDocs.size,
-                            icon = iconFor(index),
+                            icon = iconFor(categories.indexOf(category).coerceAtLeast(0)),
                             documents = categoryDocs,
                             height = cardHeight,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(cardHeight)
-                                .offset(y = stackStep * index)
-                                .zIndex(index.toFloat()),
-                            onClick = { expanded = category; importCategory = category },
+                                .offset(y = if (expanded == null) stackStep * index else if (index == 0) 0.dp else cardHeight + 16.dp + stackStep * (index - 1))
+                                .zIndex((ordered.size - index).toFloat())
+                                .pointerInput(ordered, expanded) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { dragDistance = 0f },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragDistance += amount.y
+                                        },
+                                        onDragEnd = {
+                                            if (expanded == null && ordered.size > 1) {
+                                                val shift = (dragDistance / with(density) { stackStep.toPx() }).toInt()
+                                                val from = categories.indexOf(category)
+                                                val to = (from + shift).coerceIn(0, categories.lastIndex)
+                                                if (from != to && from >= 0) {
+                                                    val reordered = categories.toMutableList()
+                                                    val moved = reordered.removeAt(from)
+                                                    reordered.add(to, moved)
+                                                    categories = reordered
+                                                    prefs.edit().putString("categories", JSONArray(reordered).toString()).apply()
+                                                }
+                                            }
+                                            dragDistance = 0f
+                                        },
+                                        onDragCancel = { dragDistance = 0f }
+                                    )
+                                },
+                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
                             onImport = { importCategory = category; importer.launch(arrayOf("image/*", "application/pdf")) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
@@ -300,7 +338,7 @@ private fun FamilyHome() {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (activeDocs.isEmpty()) {
-                        Text("No cards yet. Upload a bank card or ID photo to preview it here.")
+                        Text("暂无证件，请点击下方加号导入银行卡或身份证照片。")
                     }
                     activeDocs.forEach { doc ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -311,7 +349,7 @@ private fun FamilyHome() {
                                 File(doc.path).delete()
                                 docs = docs.filterNot { it == doc }
                                 writeDocs(prefs, docs)
-                            }) { Text("Delete") }
+                            }) { Text("删除") }
                         }
                     }
                 }
@@ -321,32 +359,32 @@ private fun FamilyHome() {
                     importCategory = activeCategory
                     expanded = null
                     importer.launch(arrayOf("image/*", "application/pdf"))
-                }) { Text("Upload card/photo") }
+                }) { Text("导入证件照片") }
             },
-            dismissButton = { TextButton(onClick = { expanded = null }) { Text("Close") } }
+            dismissButton = { TextButton(onClick = { expanded = null }) { Text("关闭") } }
         )
     }
     if (addMember) AlertDialog(onDismissRequest = { addMember = false }, title = { Text("Add a Member") },
-        text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("Member name") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("Add") } },
-        dismissButton = { TextButton(onClick = { addMember = false }) { Text("Cancel") } })
-    if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("Add New Folder") },
-        text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("Folder name") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { val n = folderText.trim(); if (n.isNotEmpty() && n !in categories) { categories = categories + n; prefs.edit().putString("categories", JSONArray(categories).toString()).apply(); expanded = n }; addFolder = false }) { Text("Create") } },
+        text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
+        dismissButton = { TextButton(onClick = { addMember = false }) { Text("取消") } })
+    if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("新建文件夹") },
+        text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("文件夹名称") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { val n = folderText.trim(); if (n.isNotEmpty() && n !in categories) { categories = categories + n; prefs.edit().putString("categories", JSONArray(categories).toString()).apply(); expanded = n }; addFolder = false }) { Text("创建") } },
         dismissButton = { TextButton(onClick = { addFolder = false }) { Text("Cancel") } })
     if (showSettings) AlertDialog(
         onDismissRequest = { showSettings = false },
         title = { Text("Settings") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Documents stay on this device and are not uploaded to the cloud.")
-            Text("App version: ${BuildConfig.VERSION_NAME}", color = Color.Gray)
+            Text("所有证件仅保存在本机，不会上传到云端。")
+            Text("应用版本：${BuildConfig.VERSION_NAME}", color = Color.Gray)
             OutlinedButton(onClick = { (context as? MainActivity)?.checkForUpdates(showUpToDate = true) }, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Filled.SystemUpdate, null)
                 Spacer(Modifier.width(8.dp))
-                Text("Check for updates")
+                Text("检查更新")
             }
         } },
-        confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Done") } }
+        confirmButton = { TextButton(onClick = { showSettings = false }) { Text("完成") } }
     )
 }
 
@@ -417,7 +455,7 @@ private fun WalletCategoryCard(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(name, color = if (bitmap != null) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$count cards", color = if (bitmap != null) Color.White.copy(alpha = .9f) else Ink.copy(alpha = .72f), fontSize = 11.sp)
+                Text("$count 张证件", color = if (bitmap != null) Color.White.copy(alpha = .9f) else Ink.copy(alpha = .72f), fontSize = 11.sp)
             }
             Icon(Icons.Filled.ChevronRight, null, tint = if (bitmap != null) Color.White else Ink, modifier = Modifier.size(22.dp))
         }
@@ -435,7 +473,7 @@ private fun WalletCategoryCard(
                     drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(0f, size.height * .5f), androidx.compose.ui.geometry.Offset(size.width, size.height * .5f), stroke)
                 }
             }
-            Text("FAMILY", color = Ink.copy(alpha = .48f), fontSize = 10.sp, letterSpacing = 2.sp,
+            Text("家庭证件", color = Ink.copy(alpha = .48f), fontSize = 10.sp, letterSpacing = 2.sp,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 23.dp))
         }
     }
