@@ -559,6 +559,7 @@ private fun WalletCategoryCard(
                         .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
             }
         }
+    }
 }
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
