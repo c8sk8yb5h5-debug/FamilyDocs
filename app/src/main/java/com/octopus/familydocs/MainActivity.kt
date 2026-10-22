@@ -549,7 +549,7 @@ private fun FamilyHome() {
                 verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(
-                    modifier = Modifier.width(240.dp).heightIn(min = 390.dp)
+                    modifier = Modifier.width(240.dp).heightIn(min = 360.dp)
                         .clip(RoundedCornerShape(120.dp))
                         .background(Color.Black)
                         .padding(horizontal = 20.dp, vertical = 34.dp),
@@ -559,7 +559,7 @@ private fun FamilyHome() {
                     Surface(
                         color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[members.indexOf(member).coerceAtLeast(0) % 4],
                         shape = CircleShape,
-                        modifier = Modifier.size(124.dp).clickable {
+                        modifier = Modifier.size(184.dp).clickable {
                             pendingAvatarMember = member
                             avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         }
@@ -771,7 +771,7 @@ private fun FamilyHome() {
                 verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(
-                    modifier = Modifier.width(240.dp).heightIn(min = 390.dp)
+                    modifier = Modifier.width(240.dp).heightIn(min = 360.dp)
                         .clip(RoundedCornerShape(120.dp))
                         .background(Color.Black)
                         .padding(horizontal = 20.dp, vertical = 34.dp),
@@ -779,7 +779,7 @@ private fun FamilyHome() {
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     Box(
-                        modifier = Modifier.size(124.dp).clip(CircleShape)
+                        modifier = Modifier.size(184.dp).clip(CircleShape)
                             .background(Color(0xFFCAD8D9)),
                         contentAlignment = Alignment.Center
                     ) {
