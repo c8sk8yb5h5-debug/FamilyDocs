@@ -57,6 +57,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -261,6 +262,7 @@ private fun FamilyHome() {
             ) {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
+                val stackStepPx = with(LocalDensity.current) { stackStep.toPx() }
                 val visibleCategories = categories.filter { category ->
                     docs.any { it.owner == selected && matchesCategory(it.category, category) }
                 }
@@ -294,7 +296,7 @@ private fun FamilyHome() {
                                         },
                                         onDragEnd = {
                                             if (expanded == null && ordered.size > 1) {
-                                                val shift = (dragDistance / with(density) { stackStep.toPx() }).toInt()
+                                                val shift = (dragDistance / stackStepPx).toInt()
                                                 val from = categories.indexOf(category)
                                                 val to = (from + shift).coerceIn(0, categories.lastIndex)
                                                 if (from != to && from >= 0) {
