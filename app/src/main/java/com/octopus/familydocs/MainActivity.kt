@@ -393,36 +393,73 @@ private fun FamilyHome() {
 
     if (editingMember != null) {
         val member = editingMember!!
-        AlertDialog(
-            onDismissRequest = { editingMember = null },
-            title = { Text("编辑家庭成员") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(editingMemberName, { editingMemberName = it }, label = { Text("姓名") }, singleLine = true)
-                OutlinedButton(onClick = { pendingAvatarMember = member; avatarPicker.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.fillMaxWidth()) { Text("选择头像照片") }
-                Text("删除成员不会自动删除已导入的证件文件。", color = Color.Gray, fontSize = 12.sp)
-            } },
-            confirmButton = { TextButton(onClick = {
-                val newName = editingMemberName.trim()
-                if (newName.isNotEmpty()) {
-                    if (newName != member && newName !in members) {
-                        members = members.map { if (it == member) newName else it }
-                        prefs.edit().putString("members", JSONArray(members).toString()).apply()
-                        val avatar = prefs.getString("member_avatar_" + member, null)
-                        if (avatar != null) prefs.edit().putString("member_avatar_" + newName, avatar).remove("member_avatar_" + member).apply()
-                        docs = docs.map { if (it.owner == member) it.copy(owner = newName) else it }
-                        writeDocs(prefs, docs)
-                        categoryOwners = categoryOwners.mapValues { (_, owner) -> if (owner == member) newName else owner }
-                        prefs.edit().putString("category_owners", JSONObject(categoryOwners).toString()).apply()
-                        if (selected == member) selected = newName
-                    }
-                    editingMember = null
-                }
-            }) { Text("保存") } },
-            dismissButton = { Row {
-                TextButton(onClick = { confirmDeleteMember = member; editingMember = null }) { Text("删除成员", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = { editingMember = null }) { Text("取消") }
-            } }
+        var dialogEntered by remember(member) { mutableStateOf(false) }
+        val dialogScale by animateFloatAsState(
+            targetValue = if (dialogEntered) 1f else .78f,
+            animationSpec = spring(dampingRatio = .42f, stiffness = 420f),
+            label = "member-capsule-jelly"
         )
+        LaunchedEffect(member) { dialogEntered = true }
+        Dialog(onDismissRequest = { editingMember = null }) {
+            Surface(
+                color = HeaderBg,
+                shape = RoundedCornerShape(42.dp),
+                modifier = Modifier.fillMaxWidth().graphicsLayer {
+                    scaleX = dialogScale
+                    scaleY = dialogScale
+                }
+            ) {
+                Column(
+                    Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text("编辑家庭成员", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = editingMemberName,
+                        onValueChange = { editingMemberName = it },
+                        label = { Text("姓名") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            pendingAvatarMember = member
+                            avatarPicker.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(28.dp)
+                    ) { Text("选择头像照片") }
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(onClick = { confirmDeleteMember = member; editingMember = null }) {
+                            Text("删除成员", color = MaterialTheme.colorScheme.error)
+                        }
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = { editingMember = null }) { Text("取消") }
+                        TextButton(onClick = {
+                            val newName = editingMemberName.trim()
+                            if (newName.isNotEmpty()) {
+                                if (newName != member && newName !in members) {
+                                    members = members.map { if (it == member) newName else it }
+                                    prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                                    val avatar = prefs.getString("member_avatar_" + member, null)
+                                    if (avatar != null) prefs.edit().putString("member_avatar_" + newName, avatar).remove("member_avatar_" + member).apply()
+                                    docs = docs.map { if (it.owner == member) it.copy(owner = newName) else it }
+                                    writeDocs(prefs, docs)
+                                    categoryOwners = categoryOwners.mapValues { (_, owner) -> if (owner == member) newName else owner }
+                                    prefs.edit().putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                                    if (selected == member) selected = newName
+                                }
+                                editingMember = null
+                            }
+                        }) { Text("保存") }
+                    }
+                }
+            }
+        }
     }
     if (editingCategory != null) {
         val category = editingCategory!!
@@ -524,6 +561,7 @@ private fun WalletCategoryCard(
         label = "wallet-card-scale"
     )
     val cardShape = RoundedCornerShape(20.dp)
+    val currentDropHandler by rememberUpdatedState(onDropUris)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val currentFlipped by rememberUpdatedState(flipped)
     val flipRotation by animateFloatAsState(targetValue = if (flipped) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f), label = "card-flip-rotation")
@@ -556,7 +594,7 @@ private fun WalletCategoryCard(
                             return try {
                                 val clip = event.toAndroidDragEvent().clipData
                                 val uris = (0 until clip.itemCount).mapNotNull { index -> clip.getItemAt(index).uri }
-                                if (uris.isEmpty()) false else { onDropUris(uris); true }
+                                if (uris.isEmpty()) false else { currentDropHandler(uris); true }
                             } catch (_: Exception) { false }
                             finally { permission?.release() }
                         }
