@@ -48,6 +48,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -398,6 +404,27 @@ private fun FamilyHome() {
 
     if (editingMember != null) {
         val member = editingMember!!
+        var holdDeleteStarted by remember(member) { mutableStateOf(false) }
+        var photoScale by remember(member) { mutableFloatStateOf(1f) }
+        var photoOffsetX by remember(member) { mutableFloatStateOf(0f) }
+        var photoOffsetY by remember(member) { mutableFloatStateOf(0f) }
+        val deleteProgress by animateFloatAsState(
+            targetValue = if (holdDeleteStarted) 1f else 0f,
+            animationSpec = androidx.compose.animation.core.tween(durationMillis = 2000),
+            label = "member-delete-countdown"
+        )
+        LaunchedEffect(member, holdDeleteStarted) {
+            if (holdDeleteStarted) {
+                delay(2000)
+                if (editingMember == member) {
+                    members = members.filterNot { it == member }
+                    prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
+                    if (selected == member) selected = members.firstOrNull() ?: ""
+                    editingMember = null
+                    editingMemberNameActive = false
+                }
+            }
+        }
         var dialogEntered by remember(member) { mutableStateOf(false) }
         val dialogScale by animateFloatAsState(
             targetValue = if (dialogEntered) 1f else .72f,
@@ -419,12 +446,12 @@ private fun FamilyHome() {
                 verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(.76f)
+                    modifier = Modifier.fillMaxWidth(.62f)
                         .clip(RoundedCornerShape(100.dp))
                         .background(Color.Black)
-                        .padding(horizontal = 24.dp, vertical = 30.dp),
+                        .padding(horizontal = 20.dp, vertical = 34.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     Surface(
                         color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[members.indexOf(member).coerceAtLeast(0) % 4],
@@ -436,7 +463,27 @@ private fun FamilyHome() {
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             if (avatarBitmap != null) {
-                                Image(avatarBitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                Box(
+                                    Modifier.fillMaxSize().clip(CircleShape).pointerInput(member) {
+                                        detectTransformGestures { _, pan, zoom, _ ->
+                                            photoScale = (photoScale * zoom).coerceIn(1f, 5f)
+                                            photoOffsetX += pan.x
+                                            photoOffsetY += pan.y
+                                        }
+                                    }
+                                ) {
+                                    Image(
+                                        avatarBitmap,
+                                        contentDescription = "调整头像照片位置和缩放",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                                            scaleX = photoScale
+                                            scaleY = photoScale
+                                            translationX = photoOffsetX
+                                            translationY = photoOffsetY
+                                        }
+                                    )
+                                }
                             } else {
                                 Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 54.sp, fontWeight = FontWeight.Medium)
                             }
@@ -470,12 +517,29 @@ private fun FamilyHome() {
                     Surface(
                         color = HeaderBg,
                         shape = CircleShape,
-                        modifier = Modifier.size(58.dp).clickable {
-                            members = members.filterNot { it == member }
-                            prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
-                            if (selected == member) selected = members.firstOrNull() ?: ""
-                            editingMember = null
-                            editingMemberNameActive = false
+                        modifier = Modifier.size(58.dp).drawBehind {
+                            if (deleteProgress > 0f) {
+                                drawArc(
+                                    color = Color(0xFFFF8A80),
+                                    startAngle = -90f,
+                                    sweepAngle = deleteProgress * 360f,
+                                    useCenter = false,
+                                    style = Stroke(width = 3.dp.toPx())
+                                )
+                            }
+                        }.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                if (!holdDeleteStarted) {
+                                    editingMember = null
+                                    editingMemberNameActive = false
+                                }
+                            }
+                        ).pointerInput(member) {
+                            androidx.compose.foundation.gestures.detectTapGestures(
+                                onLongPress = { holdDeleteStarted = true }
+                            )
                         }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -485,7 +549,10 @@ private fun FamilyHome() {
                     Surface(
                         color = Color(0xFFB2F0DF),
                         shape = CircleShape,
-                        modifier = Modifier.size(58.dp).clickable {
+                        modifier = Modifier.size(58.dp).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
                             val newName = editingMemberName.trim()
                             if (newName.isNotEmpty() && (newName == member || newName !in members)) {
                                 if (newName != member) {
@@ -502,7 +569,7 @@ private fun FamilyHome() {
                                 editingMember = null
                                 editingMemberNameActive = false
                             }
-                        }
+                        })
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(Icons.Filled.Check, contentDescription = "确认", tint = Ink, modifier = Modifier.size(30.dp))
