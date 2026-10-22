@@ -1,6 +1,11 @@
 package com.octopus.familydocs
 
 import android.content.Context
+import android.content.ContentValues
+import android.Manifest
+import android.os.Environment
+import android.provider.MediaStore
+import android.media.MediaScannerConnection
 import android.graphics.BitmapFactory
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -51,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -226,6 +232,16 @@ private fun FamilyHome() {
     var editingMemberName by remember { mutableStateOf("") }
     var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
+    var editingCategory by remember { mutableStateOf<String?>(null) }
+    var editingCategoryName by remember { mutableStateOf("") }
+    var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
+    var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
+    val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val file = pendingGalleryExport
+        if (granted && file != null) Toast.makeText(context, if (exportImageToGallery(context, file)) "已导出到相册" else "导出失败", Toast.LENGTH_LONG).show()
+        else if (!granted) Toast.makeText(context, "需要照片存储权限才能导出", Toast.LENGTH_LONG).show()
+        pendingGalleryExport = null
+    }
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -266,7 +282,7 @@ private fun FamilyHome() {
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
                     Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent)
@@ -284,7 +300,7 @@ private fun FamilyHome() {
                         Text(member, color = Color.White, fontSize = 11.sp, maxLines = 1)
                     }
                 }
-                Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.size(52.dp).clickable { memberText = ""; addMember = true }) {
+                Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.padding(top = 9.dp).size(52.dp).clickable { memberText = ""; addMember = true }) {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
                 }
             }
@@ -344,38 +360,8 @@ private fun FamilyHome() {
                                     scaleY = lifting
                                 }
                                 .zIndex(if (liveDragOffset != 0f) ordered.size + 1f else (ordered.size - index).toFloat())
-                                .pointerInput(ordered, expanded) {
-                                    detectDragGesturesAfterLongPress(
-                                        onDragStart = { dragDistance = 0f; liveDragOffset = 0f; dragTilt = 0f },
-                                        onDrag = { change, amount ->
-                                            change.consume()
-                                            dragDistance += amount.y
-                                            liveDragOffset += amount.y
-                                            dragTilt = (dragDistance / stackStepPx * -2.8f).coerceIn(-7f, 7f)
-                                        },
-                                        onDragEnd = {
-                                            if (expanded == null && ordered.size > 1) {
-                                                val shift = (dragDistance / stackStepPx).toInt()
-                                                val fromVisible = ordered.indexOf(category)
-                                                val toVisible = (fromVisible + shift).coerceIn(0, ordered.lastIndex)
-                                                if (fromVisible != toVisible && fromVisible >= 0) {
-                                                    val reorderedVisible = ordered.toMutableList()
-                                                    val moved = reorderedVisible.removeAt(fromVisible)
-                                                    reorderedVisible.add(toVisible, moved)
-                                                    val hidden = categories.filterNot { it in ordered }
-                                                    val reordered = reorderedVisible.reversed() + hidden
-                                                    categories = reordered
-                                                    prefs.edit().putString("categories", JSONArray(reordered).toString()).apply()
-                                                }
-                                            }
-                                            dragDistance = 0f
-                                            liveDragOffset = 0f
-                                            dragTilt = 0f
-                                        },
-                                        onDragCancel = { dragDistance = 0f; liveDragOffset = 0f; dragTilt = 0f }
-                                    )
-                                },
-                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
+                                                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
+                            onLongClick = { editingCategory = category; editingCategoryName = category },
                             onImport = { importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
@@ -417,6 +403,62 @@ private fun FamilyHome() {
                 TextButton(onClick = { editingMember = null }) { Text("取消") }
             } }
         )
+    }
+    if (editingCategory != null) {
+        val category = editingCategory!!
+        val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+        val imageExts = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
+        val frontPhoto = categoryDocs.firstOrNull { it.side == "front" && File(it.path).extension.lowercase() in imageExts }
+        val backPhoto = categoryDocs.firstOrNull { it.side == "back" && File(it.path).extension.lowercase() in imageExts }
+        AlertDialog(onDismissRequest = { editingCategory = null }, title = { Text("编辑证件卡片") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(editingCategoryName, { editingCategoryName = it }, label = { Text("卡片名称") }, singleLine = true)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { importCategory = category; importSide = "front"; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
+                    OutlinedButton(onClick = { importCategory = category; importSide = "back"; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
+                    OutlinedButton(onClick = { backPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "反面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = backPhoto != null, modifier = Modifier.weight(1f)) { Text("导出反面") }
+                }
+                Text("删除卡片会同时删除该分类下的本地证件文件。", color = Color.Gray, fontSize = 12.sp)
+            } },
+            confirmButton = { TextButton(onClick = {
+                val newName = editingCategoryName.trim()
+                if (newName.isNotEmpty()) {
+                    if (newName != category && newName !in categories) {
+                        categories = categories.map { if (it == category) newName else it }
+                        docs = docs.map { if (it.owner == selected && matchesCategory(it.category, category)) it.copy(category = newName) else it }
+                        categoryOwners = categoryOwners.mapKeys { if (it.key == category) newName else it.key }
+                        prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                        writeDocs(prefs, docs)
+                        if (expanded == category) expanded = newName
+                    }
+                    editingCategory = null
+                }
+            }) { Text("保存") } },
+            dismissButton = { Row {
+                TextButton(onClick = { confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { editingCategory = null }) { Text("关闭") }
+            } }
+        )
+    }
+    if (confirmDeleteCategory != null) {
+        val category = confirmDeleteCategory!!
+        AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
+            text = { Text("将删除“" + category + "”及其关联的本地证件文件。此操作不可撤销。") },
+            confirmButton = { TextButton(onClick = {
+                val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                removed.forEach { File(it.path).delete() }
+                docs = docs.filterNot { it in removed }
+                categories = categories.filterNot { it == category }
+                categoryOwners = categoryOwners - category
+                prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                writeDocs(prefs, docs)
+                if (expanded == category) expanded = null
+                confirmDeleteCategory = null
+            }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDeleteCategory = null }) { Text("取消") } })
     }
     if (confirmDeleteMember != null) {
         val member = confirmDeleteMember!!
@@ -477,6 +519,7 @@ private fun WalletCategoryCard(
     onImportBack: () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onImport: () -> Unit,
     onDelete: (Doc) -> Unit
 ) {
@@ -507,8 +550,8 @@ private fun WalletCategoryCard(
     Box(
         modifier
             .scale(scale)
+            .shadow(elevation = 18.dp, shape = cardShape, clip = false)
             .clip(cardShape)
-            .background(Brush.linearGradient(gradient))
             .pointerInput(name, flipped) {
                 var horizontalDistance = 0f
                 detectHorizontalDragGestures(
@@ -522,30 +565,17 @@ private fun WalletCategoryCard(
                     }
                 )
             }
-            .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)
     ) {
-        val cardFront = !flipped
-        val displayedBitmap = if (cardFront) bitmap else bitmap
-        if (displayedBitmap != null) {
-            Box(Modifier.fillMaxSize().graphicsLayer {
-                rotationY = flipRotation
-                cameraDistance = 18 * density
-            }) {
-                Image(
-                    bitmap = displayedBitmap,
-                    contentDescription = name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f }
-                )
+        Box(Modifier.fillMaxSize().graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }.background(Brush.linearGradient(gradient))) {
+            if (bitmap != null) {
+                Image(bitmap = bitmap, contentDescription = name, contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f })
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
-            }
-        } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                if (flipped) {
-                    Icon(Icons.Filled.Add, contentDescription = "添加卡片背面照片", tint = Ink.copy(alpha = .72f), modifier = Modifier.size(92.dp).clickable { onImportBack() })
-                } else {
-                    Icon(Icons.Filled.Add, contentDescription = "导入证件照片", tint = Ink.copy(alpha = .72f), modifier = Modifier.size(92.dp).clickable { onImport() })
-                }
+            } else {
+                Icon(Icons.Filled.Add, contentDescription = if (flipped) "添加卡片背面照片" else "导入证件照片",
+                    tint = Ink.copy(alpha = .72f), modifier = Modifier.align(Alignment.Center).size(92.dp)
+                        .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
             }
         }
         Row(
@@ -562,6 +592,40 @@ private fun WalletCategoryCard(
             }
         }
     }
+}
+
+private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
+    if (Build.VERSION.SDK_INT >= 29) done(exportImageToGallery(context, file))
+    else if (android.content.ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) done(exportImageToGallery(context, file))
+    else { setPending(file); requestPermission() }
+}
+
+private fun exportImageToGallery(context: Context, source: File): Boolean {
+    if (!source.exists() || source.length() == 0L) return false
+    return runCatching {
+        val mime = when (source.extension.lowercase()) { "png" -> "image/png"; "webp" -> "image/webp"; else -> "image/jpeg" }
+        if (Build.VERSION.SDK_INT >= 29) {
+            val values = ContentValues().apply {
+                put(MediaStore.Images.Media.DISPLAY_NAME, "FamilyDocs_" + System.currentTimeMillis() + "." + source.extension.ifBlank { "jpg" })
+                put(MediaStore.Images.Media.MIME_TYPE, mime)
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/FamilyDocs")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+            val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+            try {
+                context.contentResolver.openOutputStream(uri)?.use { output -> source.inputStream().use { it.copyTo(output) } } ?: return false
+                values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                context.contentResolver.update(uri, values, null, null)
+                true
+            } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
+        } else {
+            val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "FamilyDocs").apply { mkdirs() }
+            val target = File(dir, "FamilyDocs_" + System.currentTimeMillis() + "." + source.extension.ifBlank { "jpg" })
+            source.inputStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+            MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(mime), null)
+            true
+        }
+    }.getOrDefault(false)
 }
 
 private class StackWave(private val variant: Int) : Shape {
