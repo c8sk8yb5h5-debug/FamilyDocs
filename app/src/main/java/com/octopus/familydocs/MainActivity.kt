@@ -1,6 +1,12 @@
 package com.octopus.familydocs
 
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.core.content.FileProvider
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -52,6 +58,10 @@ import androidx.compose.ui.zIndex
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
 
 private val ScreenBg = Color(0xFF202122)
 private val HeaderBg = Color(0xFF3A3B3D)
@@ -65,6 +75,116 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
         window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
         setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome() } }
+        checkForUpdates(showUpToDate = false)
+    }
+
+    private fun checkForUpdates(showUpToDate: Boolean) {
+        if (showUpToDate) Toast.makeText(this, "正在检查更新…", Toast.LENGTH_SHORT).show()
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = (URL("https://api.github.com/repos/c8sk8yb5h5-debug/FamilyDocs/releases/latest").openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 12000
+                    readTimeout = 12000
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "FamilyDocs-Android")
+                }
+                if (connection.responseCode != 200) throw IllegalStateException("GitHub API HTTP ${connection.responseCode}")
+                val json = BufferedReader(InputStreamReader(connection.inputStream, Charsets.UTF_8)).use { it.readText() }
+                val release = JSONObject(json)
+                val tag = release.optString("tag_name", "")
+                val latest = tag.removePrefix("v")
+                val notes = release.optString("body", "此版本没有更新说明。")
+                val assets = release.optJSONArray("assets")
+                var apkUrl = ""
+                if (assets != null) for (i in 0 until assets.length()) {
+                    val asset = assets.optJSONObject(i) ?: continue
+                    if (asset.optString("name") == "FamilyDocs.apk") {
+                        apkUrl = asset.optString("browser_download_url", "")
+                        break
+                    }
+                }
+                val current = BuildConfig.VERSION_NAME
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    if (compareVersions(latest, current) > 0 && apkUrl.isNotBlank()) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("发现新版本 $latest")
+                            .setMessage("当前版本：$current\n\n更新说明：\n$notes\n\n下载并安装更新？")
+                            .setNegativeButton("稍后", null)
+                            .setPositiveButton("下载更新") { _, _ -> downloadUpdate(apkUrl) }
+                            .show()
+                    } else if (showUpToDate) {
+                        Toast.makeText(this, if (apkUrl.isBlank()) "暂未找到可用更新包" else "当前已是最新版本（$current）", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (_: Exception) {
+                runOnUiThread {
+                    if (showUpToDate && !isFinishing && !isDestroyed) Toast.makeText(this, "检查更新失败，请检查网络后重试", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun compareVersions(a: String, b: String): Int {
+        val x = a.split(".")
+        val y = b.split(".")
+        for (i in 0 until maxOf(x.size, y.size)) {
+            val xi = x.getOrNull(i)?.filter(Char::isDigit)?.toIntOrNull() ?: 0
+            val yi = y.getOrNull(i)?.filter(Char::isDigit)?.toIntOrNull() ?: 0
+            if (xi != yi) return xi.compareTo(yi)
+        }
+        return 0
+    }
+
+    private fun downloadUpdate(url: String) {
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("需要允许安装应用")
+                .setMessage("请允许 FamilyDocs 安装应用，授权后返回并再次检查更新。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("打开设置") { _, _ ->
+                    startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
+                }.show()
+            return
+        }
+        Toast.makeText(this, "正在下载更新包…", Toast.LENGTH_SHORT).show()
+        Thread {
+            var file: File? = null
+            try {
+                val dir = File(filesDir, "updates").apply { mkdirs() }
+                file = File(dir, "FamilyDocs-update.apk").also { if (it.exists()) it.delete() }
+                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 20000
+                    readTimeout = 30000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "FamilyDocs-Android")
+                }
+                try {
+                    if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
+                    conn.inputStream.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+                } finally { conn.disconnect() }
+                if (!file.exists() || file.length() < 100000) throw IllegalStateException("APK 文件不完整")
+                runOnUiThread {
+                    try {
+                        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file!!)
+                        val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+                            data = uri
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                        }
+                        startActivity(install)
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "无法打开系统安装器，请检查安装未知应用权限", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (_: Exception) {
+                file?.delete()
+                runOnUiThread { Toast.makeText(this, "更新下载失败，请检查网络后重试", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
     }
 }
 
@@ -169,7 +289,20 @@ private fun FamilyHome() {
         text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("Folder name") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = folderText.trim(); if (n.isNotEmpty() && n !in categories) { categories = categories + n; prefs.edit().putString("categories", JSONArray(categories).toString()).apply(); expanded = n }; addFolder = false }) { Text("Create") } },
         dismissButton = { TextButton(onClick = { addFolder = false }) { Text("Cancel") } })
-    if (showSettings) AlertDialog(onDismissRequest = { showSettings = false }, title = { Text("Settings") }, text = { Text("Documents stay on this device and are not uploaded to the cloud.") }, confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Done") } })
+    if (showSettings) AlertDialog(
+        onDismissRequest = { showSettings = false },
+        title = { Text("Settings") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Documents stay on this device and are not uploaded to the cloud.")
+            Text("App version: ${BuildConfig.VERSION_NAME}", color = Color.Gray)
+            OutlinedButton(onClick = { (context as? MainActivity)?.checkForUpdates(showUpToDate = true) }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.SystemUpdate, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Check for updates")
+            }
+        } },
+        confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Done") } }
+    )
 }
 
 @Composable
