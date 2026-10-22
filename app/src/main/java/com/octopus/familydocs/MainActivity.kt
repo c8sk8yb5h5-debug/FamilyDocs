@@ -1,6 +1,7 @@
 package com.octopus.familydocs
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -24,6 +25,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,10 +46,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +66,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.absoluteValue
 
 private val ScreenBg = Color(0xFF202122)
 private val HeaderBg = Color(0xFF3A3B3D)
@@ -247,31 +252,32 @@ private fun FamilyHome() {
                     Text("Add a Member", color = Color.LightGray, fontSize = 10.sp, lineHeight = 12.sp)
                 }
             }
-            Spacer(Modifier.height(22.dp))
-            Text(selected + "'s Documents", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(12.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Surface(color = Color.Black, shape = FolderTail, border = BorderStroke(1.4.dp, Color.White), modifier = Modifier.width(218.dp).height(56.dp).clickable { folderText = ""; addFolder = true }) {
-                    Row(Modifier.padding(horizontal = 25.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                        Text("Add New Folder", color = Color.White, fontSize = 14.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Icon(Icons.Filled.FolderOpen, null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.height(18.dp))
+            BoxWithConstraints(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(bottom = 26.dp)
+            ) {
+                val cardHeight = maxWidth / 1.586f
+                val stackStep = 68.dp
+                Box(Modifier.fillMaxWidth().height(cardHeight + stackStep * (categories.size - 1))) {
+                    categories.forEachIndexed { index, category ->
+                        val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                        WalletCategoryCard(
+                            name = category,
+                            count = categoryDocs.size,
+                            icon = iconFor(index),
+                            documents = categoryDocs,
+                            height = cardHeight,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(cardHeight)
+                                .offset(y = stackStep * index)
+                                .zIndex(index.toFloat()),
+                            onClick = { expanded = category; importCategory = category },
+                            onImport = { importCategory = category; importer.launch(arrayOf("image/*", "application/pdf")) },
+                            onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
+                        )
                     }
                 }
-            }
-            Column(Modifier.weight(1f).verticalScroll(scroll).padding(bottom = 26.dp)) {
-                categories.forEachIndexed { index, category ->
-                    DocumentWaveCard(
-                        category, docs.count { it.owner == selected && matchesCategory(it.category, category) },
-                        Pastels[index % Pastels.size], iconFor(index), expanded == category,
-                        docs.filter { it.owner == selected && matchesCategory(it.category, category) },
-                        onClick = { expanded = if (expanded == category) null else category; importCategory = category },
-                        onImport = { importCategory = category; importer.launch(arrayOf("image/*", "application/pdf")) },
-                        onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) },
-                        index = index
-                    )
-                }
-                Spacer(Modifier.height(28.dp))
             }
         }
         Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 22.dp).size(68.dp).clickable {
@@ -307,19 +313,33 @@ private fun FamilyHome() {
 }
 
 @Composable
-private fun DocumentWaveCard(
-    name: String, count: Int, tint: Color, icon: ImageVector, expanded: Boolean,
-    documents: List<Doc>, onClick: () -> Unit, onImport: () -> Unit, onDelete: (Doc) -> Unit, index: Int
+private fun WalletCategoryCard(
+    name: String,
+    count: Int,
+    icon: ImageVector,
+    documents: List<Doc>,
+    height: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onImport: () -> Unit,
+    onDelete: (Doc) -> Unit
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed) .985f else if (expanded) 1f else .995f,
+        if (pressed) .985f else 1f,
         spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 360f),
         label = "wallet-card-scale"
     )
-    val cardShape = RoundedCornerShape(26.dp)
-    val gradient = when (index % 5) {
+    val cardShape = RoundedCornerShape(20.dp)
+    val firstImage = documents.firstOrNull { doc ->
+        val ext = File(doc.path).extension.lowercase()
+        ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
+    }
+    val bitmap = remember(firstImage?.path) {
+        firstImage?.let { runCatching { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }.getOrNull() }
+    }
+    val gradient = when (name.hashCode().absoluteValue % 5) {
         0 -> listOf(Color(0xFFE0F8FC), Color(0xFF9EDDE9), Color(0xFFB8EAF0))
         1 -> listOf(Color(0xFFE0FFF4), Color(0xFF9CE6D1), Color(0xFFB5F0DF))
         2 -> listOf(Color(0xFFFFF1C9), Color(0xFFFFDFA0), Color(0xFFFFEAC0))
@@ -327,82 +347,58 @@ private fun DocumentWaveCard(
         else -> listOf(Color(0xFFF8F7F1), Color(0xFFE5E3DA), Color(0xFFF2F0E7))
     }
     Box(
-        Modifier
-            .fillMaxWidth()
-            .offset(y = if (index == 0) 0.dp else (-28).dp)
-            .zIndex(index.toFloat())
+        modifier
             .scale(scale)
-            .padding(horizontal = 1.dp)
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
-            .animateContentSize(spring(dampingRatio = .78f, stiffness = 260f))
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
-        // Subtle decorative sheen makes each category feel like a physical wallet card.
-        Box(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 12.dp, end = 14.dp)
-                .size(width = 126.dp, height = 76.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(Color.White.copy(alpha = .13f))
-        )
-        Column(Modifier.fillMaxWidth().padding(start = 18.dp, end = 16.dp, top = 22.dp, bottom = 18.dp)) {
-            Row(Modifier.fillMaxWidth().heightIn(min = 66.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = Color.White.copy(alpha = .9f),
-                    shape = CircleShape,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(icon, null, tint = Ink, modifier = Modifier.size(25.dp))
-                    }
-                }
-                Spacer(Modifier.width(18.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(name, color = Ink, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(4.dp))
-                    Text("$count Documents", color = Ink.copy(alpha = .78f), fontSize = 12.sp)
-                }
-                if (index == 0 || name == "Personal Documents") {
-                    Surface(color = Color.White.copy(alpha = .88f), shape = CircleShape, modifier = Modifier.size(34.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Lock, "Stored locally", tint = Ink, modifier = Modifier.size(19.dp))
-                        }
-                    }
-                }
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .24f)))
+        } else {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 18.dp)
+                    .size(width = 116.dp, height = 70.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Color.White.copy(alpha = .18f))
+            )
+        }
+        Row(
+            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 18.dp, vertical = 17.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(color = Color.White.copy(alpha = .9f), shape = CircleShape, modifier = Modifier.size(38.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = Ink, modifier = Modifier.size(21.dp)) }
             }
-            AnimatedVisibility(
-                visible = expanded,
-                enter = expandVertically(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 260f)) + fadeIn(),
-                exit = shrinkVertically(spring(dampingRatio = .9f, stiffness = 300f)) + fadeOut()
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(name, color = if (bitmap != null) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("$count cards", color = if (bitmap != null) Color.White.copy(alpha = .9f) else Ink.copy(alpha = .72f), fontSize = 11.sp)
+            }
+            Icon(Icons.Filled.ChevronRight, null, tint = if (bitmap != null) Color.White else Ink, modifier = Modifier.size(22.dp))
+        }
+        if (bitmap == null) {
+            // Subtle EMV-chip motif gives empty categories a physical payment-card feel.
+            Box(
+                Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 18.dp)
+                    .size(width = 42.dp, height = 32.dp).clip(RoundedCornerShape(7.dp))
+                    .background(Color(0xFFD7D3B9).copy(alpha = .95f))
             ) {
-                Column(Modifier.fillMaxWidth().padding(start = 60.dp, top = 10.dp, bottom = 4.dp)) {
-                    if (documents.isEmpty()) {
-                        Text("No cards yet", color = Ink.copy(alpha = .72f), fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
-                    }
-                    documents.forEach { doc ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.CreditCard, null, tint = Ink, modifier = Modifier.size(20.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(doc.name, color = Ink, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                            TextButton(onClick = { onDelete(doc) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 0.dp)) {
-                                Text("Delete", color = Ink, fontSize = 11.sp)
-                            }
-                        }
-                    }
-                    Button(
-                        onClick = onImport,
-                        shape = RoundedCornerShape(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Color.White),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                    ) {
-                        Icon(Icons.Filled.Add, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text("Add Card / Document", fontSize = 12.sp)
-                    }
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val stroke = 1.dp.toPx()
+                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(size.width * .33f, 0f), androidx.compose.ui.geometry.Offset(size.width * .33f, size.height), stroke)
+                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(size.width * .66f, 0f), androidx.compose.ui.geometry.Offset(size.width * .66f, size.height), stroke)
+                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(0f, size.height * .5f), androidx.compose.ui.geometry.Offset(size.width, size.height * .5f), stroke)
                 }
             }
+            Text("FAMILY", color = Ink.copy(alpha = .48f), fontSize = 10.sp, letterSpacing = 2.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 23.dp))
         }
     }
 }
