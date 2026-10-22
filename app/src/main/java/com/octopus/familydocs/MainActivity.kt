@@ -272,10 +272,12 @@ private fun FamilyHome() {
                 val visibleCategories = categories.filter { category ->
                     docs.any { it.owner == selected && matchesCategory(it.category, category) } || category !in defaultCategories
                 }
-                val ordered = if (expanded != null && expanded in visibleCategories) {
-                    listOf(expanded!!) + visibleCategories.filterNot { it == expanded }
-                } else visibleCategories
-                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else cardHeight + stackStep * (ordered.size - 1))) {
+                // Keep the category order stable; selection changes the stack geometry, not the list order.
+                val ordered = visibleCategories
+                val selectedIndexForHeight = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
+                val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
+                    else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
+                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight)) {
                     if (ordered.isEmpty()) {
                         Text("还没有证件。点击右下角加号，导入银行卡或身份证照片。", color = Color.LightGray, modifier = Modifier.align(Alignment.Center).padding(20.dp))
                     }
@@ -284,7 +286,13 @@ private fun FamilyHome() {
                         var dragDistance by remember(category) { mutableFloatStateOf(0f) }
                         var liveDragOffset by remember(category) { mutableFloatStateOf(0f) }
                         var dragTilt by remember(category) { mutableFloatStateOf(0f) }
-                        val targetOffset = if (expanded == null) stackStep * index else if (index == 0) 0.dp else cardHeight + 16.dp + stackStep * (index - 1)
+                        val selectedIndex = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
+                        val targetOffset = when {
+                            selectedIndex == null -> stackStep * index
+                            index == selectedIndex -> 0.dp
+                            index < selectedIndex -> -cardHeight + stackStep * (index - selectedIndex)
+                            else -> cardHeight + 16.dp + stackStep * (index - selectedIndex - 1)
+                        }
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
                         val animatedDragOffset by animateFloatAsState(liveDragOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow), label = "card-drag-settle")
                         val animatedDragTilt by animateFloatAsState(dragTilt, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "card-drag-tilt")
@@ -423,19 +431,18 @@ private fun WalletCategoryCard(
             .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
-            .pointerInput(isExpanded, flipped) {
-                if (isExpanded) {
-                    var horizontalDistance = 0f
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (horizontalDistance.absoluteValue > 48f) flipped = horizontalDistance < 0f
-                        },
-                        onHorizontalDrag = { change, dragAmount ->
-                            change.consume()
-                            horizontalDistance += dragAmount
-                        }
-                    )
-                }
+            .pointerInput(name, flipped) {
+                var horizontalDistance = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { horizontalDistance = 0f },
+                    onDragEnd = {
+                        if (horizontalDistance.absoluteValue > 48f) flipped = !flipped
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        horizontalDistance += dragAmount
+                    }
+                )
             }
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
