@@ -876,7 +876,7 @@ private fun readMembers(prefs: android.content.SharedPreferences): List<String> 
     return try {
         val raw = prefs.getString("members", null) ?: return listOf("Juliet", "Kevin", "Martha", "James")
         val a = JSONArray(raw)
-        (0 until a.length()).map { a.getString(it) }.ifEmpty { listOf("Juliet", "Kevin", "Martha", "James") }
+        (0 until a.length()).map { a.getString(it) }
     } catch (_: Exception) {
         listOf("Juliet", "Kevin", "Martha", "James")
     }
@@ -886,7 +886,7 @@ private fun readCategories(prefs: android.content.SharedPreferences): List<Strin
     return try {
         val raw = prefs.getString("categories", null) ?: return defaults
         val a = JSONArray(raw)
-        (0 until a.length()).map { a.getString(it) }.ifEmpty { defaults }
+        (0 until a.length()).map { a.getString(it) }
     } catch (_: Exception) {
         defaults
     }
