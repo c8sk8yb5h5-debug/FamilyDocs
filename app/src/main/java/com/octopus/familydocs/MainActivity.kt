@@ -49,7 +49,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -517,7 +517,8 @@ private fun FamilyHome() {
                     Surface(
                         color = HeaderBg,
                         shape = CircleShape,
-                        modifier = Modifier.size(58.dp).drawBehind {
+                        modifier = Modifier.size(58.dp).drawWithContent {
+                            drawContent()
                             if (deleteProgress > 0f) {
                                 drawArc(
                                     color = Color(0xFFFF8A80),
