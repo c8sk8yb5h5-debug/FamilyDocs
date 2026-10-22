@@ -242,6 +242,46 @@ private fun FamilyHome() {
     var importSide by remember { mutableStateOf("front") }
     var replaceImportedSide by remember { mutableStateOf(false) }
     var docs by remember { mutableStateOf(readDocs(prefs)) }
+    val removeMemberData: (String) -> Unit = { memberToRemove ->
+        val removedDocs = docs.filter { it.owner == memberToRemove }
+        removedDocs.forEach { runCatching { File(it.path).delete() } }
+        docs = docs.filterNot { it.owner == memberToRemove }
+        writeDocs(prefs, docs)
+
+        val avatarKey = "member_avatar_" + memberToRemove
+        prefs.getString(avatarKey, null)?.let { path ->
+            runCatching {
+                val avatarFile = File(path).canonicalFile
+                val avatarDir = File(context.filesDir, "member-avatars").canonicalFile
+                if (avatarFile.parentFile == avatarDir) avatarFile.delete()
+            }
+        }
+        val ownersJson = JSONObject(prefs.getString("category_owners", "{}") ?: "{}")
+        val keys = ownersJson.keys().asSequence().toList()
+        val removedCategories = keys.filter { ownersJson.optString(it) == memberToRemove }
+        removedCategories.forEach { category ->
+            val usedByOtherMembers = docs.any { it.category == category && it.owner != memberToRemove }
+            if (!usedByOtherMembers) {
+                categories = categories.filterNot { it == category }
+                ownersJson.remove(category)
+            } else {
+                ownersJson.put(category, "")
+            }
+        }
+        categoryOwners = buildMap {
+            val remaining = ownersJson.keys()
+            while (remaining.hasNext()) {
+                val key = remaining.next()
+                put(key, ownersJson.optString(key))
+            }
+        }
+        prefs.edit()
+            .remove(avatarKey)
+            .putString("categories", JSONArray(categories).toString())
+            .putString("category_owners", ownersJson.toString())
+            .apply()
+        if (selected == memberToRemove) selected = members.firstOrNull { it != memberToRemove } ?: ""
+    }
     var addMember by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var memberText by remember { mutableStateOf("") }
@@ -467,8 +507,8 @@ private fun FamilyHome() {
                 delay(2000)
                 if (editingMember == member) {
                     members = members.filterNot { it == member }
-                    prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
-                    if (selected == member) selected = members.firstOrNull() ?: ""
+                    prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                    removeMemberData(member)
                     editingMember = null
                     editingMemberNameActive = false
                 }
@@ -674,8 +714,8 @@ private fun FamilyHome() {
             text = { Text("将从家庭成员列表中移除“" + member + "”。已导入的证件文件会保留在本机。") },
             confirmButton = { TextButton(onClick = {
                 members = members.filterNot { it == member }
-                prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
-                if (selected == member) selected = members.firstOrNull() ?: ""
+                prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                removeMemberData(member)
                 confirmDeleteMember = null
             }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmDeleteMember = null }) { Text("取消") } })
