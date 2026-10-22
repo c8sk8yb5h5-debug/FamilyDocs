@@ -315,9 +315,56 @@ private fun FamilyHome() {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
-                    Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent)
-                        .combinedClickable(onClick = { flipResetToken++; selected = member }, onLongClick = { flipResetToken++; editingMember = member; editingMemberName = member; editingMemberNameActive = false })
-                        .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    var memberDragX by remember(member) { mutableFloatStateOf(0f) }
+                    Column(
+                        Modifier.scale(selectedScale)
+                            .zIndex(if (memberDragX != 0f) 2f else 0f)
+                            .graphicsLayer { translationX = memberDragX }
+                            .clip(RoundedCornerShape(34.dp))
+                            .background(if (member == selected) Color.Black else Color.Transparent)
+                            .pointerInput(member, members) {
+                                detectTapGestures(
+                                    onTap = { flipResetToken++; selected = member },
+                                    onDoubleTap = {
+                                        flipResetToken++
+                                        editingMember = member
+                                        editingMemberName = member
+                                        editingMemberNameActive = false
+                                    }
+                                )
+                            }
+                            .pointerInput(member, members) {
+                                var accumulated = 0f
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { accumulated = 0f },
+                                    onDragEnd = { memberDragX = 0f; accumulated = 0f },
+                                    onDragCancel = { memberDragX = 0f; accumulated = 0f },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        memberDragX += dragAmount.x
+                                        accumulated += dragAmount.x
+                                        val step = 64.dp.toPx()
+                                        if (accumulated > step && index < members.lastIndex) {
+                                            val reordered = members.toMutableList()
+                                            val item = reordered.removeAt(index)
+                                            reordered.add(index + 1, item)
+                                            members = reordered
+                                            prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                                            accumulated -= step
+                                        } else if (accumulated < -step && index > 0) {
+                                            val reordered = members.toMutableList()
+                                            val item = reordered.removeAt(index)
+                                            reordered.add(index - 1, item)
+                                            members = reordered
+                                            prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                                            accumulated += step
+                                        }
+                                    }
+                                )
+                            }
+                            .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
                         val avatarBitmap = remember(member, avatarPath, avatarRefresh) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
                         Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
