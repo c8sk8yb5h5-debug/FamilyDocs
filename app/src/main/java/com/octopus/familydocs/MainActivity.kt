@@ -419,41 +419,25 @@ private fun FamilyHome() {
         val backPhoto = categoryDocs.firstOrNull { it.side == "back" && File(it.path).extension.lowercase() in imageExts }
         AlertDialog(onDismissRequest = { editingCategory = null }, title = { Text("编辑证件卡片") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(editingCategoryName, { editingCategoryName = it }, label = { Text("卡片名称") }, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
-                    OutlinedButton(onClick = { importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
+                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
+                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
                     OutlinedButton(onClick = { backPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "反面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = backPhoto != null, modifier = Modifier.weight(1f)) { Text("导出反面") }
                 }
-                Text("删除卡片会同时删除该分类下的本地证件文件。", color = Color.Gray, fontSize = 12.sp)
+                Text("仅删除 FamilyDocs 保存的副本，不会删除手机相册中的原始照片。", color = Color.Gray, fontSize = 12.sp)
             } },
-            confirmButton = { TextButton(onClick = {
-                val newName = editingCategoryName.trim()
-                if (newName.isNotEmpty()) {
-                    if (newName != category && newName !in categories) {
-                        categories = categories.map { if (it == category) newName else it }
-                        docs = docs.map { if (it.owner == selected && matchesCategory(it.category, category)) it.copy(category = newName) else it }
-                        categoryOwners = categoryOwners.mapKeys { if (it.key == category) newName else it.key }
-                        prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
-                        writeDocs(prefs, docs)
-                        if (expanded == category) expanded = newName
-                    }
-                    editingCategory = null
-                }
-            }) { Text("保存") } },
-            dismissButton = { Row {
-                TextButton(onClick = { confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) }
-                TextButton(onClick = { editingCategory = null }) { Text("关闭") }
-            } }
+            confirmButton = { TextButton(onClick = { editingCategory = null }) { Text("完成") } },
+            dismissButton = { TextButton(onClick = { flipResetToken++; confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) } }
         )
     }
+
     if (confirmDeleteCategory != null) {
         val category = confirmDeleteCategory!!
         AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
-            text = { Text("将删除“" + category + "”及其关联的本地证件文件。此操作不可撤销。") },
+            text = { Text("将删除此卡片以及 FamilyDocs 在应用内部保存的证件副本；不会删除手机相册中的原始照片。此操作不可撤销。") },
             confirmButton = { TextButton(onClick = {
                 val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                 removed.forEach { File(it.path).delete() }
