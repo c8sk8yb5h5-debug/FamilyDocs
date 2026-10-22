@@ -282,8 +282,12 @@ private fun FamilyHome() {
                     ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                         var dragDistance by remember(category) { mutableFloatStateOf(0f) }
+                        var liveDragOffset by remember(category) { mutableFloatStateOf(0f) }
+                        var dragTilt by remember(category) { mutableFloatStateOf(0f) }
                         val targetOffset = if (expanded == null) stackStep * index else if (index == 0) 0.dp else cardHeight + 16.dp + stackStep * (index - 1)
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
+                        val animatedDragOffset by animateFloatAsState(liveDragOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow), label = "card-drag-settle")
+                        val animatedDragTilt by animateFloatAsState(dragTilt, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "card-drag-tilt")
                         WalletCategoryCard(
                             name = category,
                             count = categoryDocs.size,
@@ -296,13 +300,22 @@ private fun FamilyHome() {
                                 .fillMaxWidth()
                                 .height(cardHeight)
                                 .offset(y = animatedOffset)
-                                .zIndex((ordered.size - index).toFloat())
+                                .graphicsLayer {
+                                    translationY = animatedDragOffset
+                                    rotationZ = animatedDragTilt
+                                    val lifting = if (liveDragOffset != 0f) 1.015f else 1f
+                                    scaleX = lifting
+                                    scaleY = lifting
+                                }
+                                .zIndex(if (liveDragOffset != 0f) ordered.size + 1f else (ordered.size - index).toFloat())
                                 .pointerInput(ordered, expanded) {
                                     detectDragGesturesAfterLongPress(
-                                        onDragStart = { dragDistance = 0f },
+                                        onDragStart = { dragDistance = 0f; liveDragOffset = 0f; dragTilt = 0f },
                                         onDrag = { change, amount ->
                                             change.consume()
                                             dragDistance += amount.y
+                                            liveDragOffset += amount.y
+                                            dragTilt = (dragDistance / stackStepPx * -2.8f).coerceIn(-7f, 7f)
                                         },
                                         onDragEnd = {
                                             if (expanded == null && ordered.size > 1) {
@@ -320,8 +333,10 @@ private fun FamilyHome() {
                                                 }
                                             }
                                             dragDistance = 0f
+                                            liveDragOffset = 0f
+                                            dragTilt = 0f
                                         },
-                                        onDragCancel = { dragDistance = 0f }
+                                        onDragCancel = { dragDistance = 0f; liveDragOffset = 0f; dragTilt = 0f }
                                     )
                                 },
                             onClick = { expanded = if (expanded == category) null else category; importCategory = category },
