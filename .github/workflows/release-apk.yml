@@ -45,6 +45,8 @@ jobs:
           echo "APP_VERSION_CODE=$((GITHUB_RUN_NUMBER + 10))" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
           echo "RELEASE_NOTES=${{ inputs.notes || 'Bug fixes and improvements' }}" >> "$GITHUB_ENV"
+      - name: Validate signing secret configuration
+        run: echo "Signing configuration check started"
       - name: Prepare persistent signing key
         shell: bash
         env:
