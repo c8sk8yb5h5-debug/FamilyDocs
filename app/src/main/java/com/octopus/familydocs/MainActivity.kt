@@ -326,9 +326,7 @@ private fun FamilyHome() {
                 val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
                 Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
-                    if (ordered.isEmpty()) {
-                        Text("", modifier = Modifier.align(Alignment.Center))
-                    }
+                    if (ordered.isEmpty()) { }
                     ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                         var dragDistance by remember(category) { mutableFloatStateOf(0f) }
