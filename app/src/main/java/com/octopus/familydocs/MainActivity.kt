@@ -31,6 +31,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.horizontalScroll
@@ -76,7 +77,7 @@ private val ScreenBg = Color(0xFF202122)
 private val HeaderBg = Color(0xFF3A3B3D)
 private val Ink = Color(0xFF24292A)
 private val Pastels = listOf(Color(0xFF9ADDE7), Color(0xFF9FE8D3), Color(0xFFFFE5A5), Color(0xFFEBC9E0), Color(0xFFF2F0E7))
-private data class Doc(val name: String, val path: String, val category: String, val owner: String)
+private data class Doc(val name: String, val path: String, val category: String, val owner: String, val side: String = "front")
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -207,6 +208,7 @@ private fun FamilyHome() {
     var categories by remember { mutableStateOf(readCategories(prefs)) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var importCategory by remember { mutableStateOf(categories.first()) }
+    var importSide by remember { mutableStateOf("front") }
     var docs by remember { mutableStateOf(readDocs(prefs)) }
     var addMember by remember { mutableStateOf(false) }
     var addFolder by remember { mutableStateOf(false) }
@@ -216,7 +218,8 @@ private fun FamilyHome() {
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        val added = uris.mapNotNull { importFile(context, it, importCategory, selected) }
+        val added = uris.mapNotNull { importFile(context, it, importCategory, selected, importSide) }
+        importSide = "front"
         val updatedDocs = docs + added
         docs = updatedDocs
         writeDocs(prefs, updatedDocs)
@@ -282,6 +285,8 @@ private fun FamilyHome() {
                             icon = iconFor(categories.indexOf(category).coerceAtLeast(0)),
                             documents = categoryDocs,
                             height = cardHeight,
+                            isExpanded = expanded == category,
+                            onImportBack = { importCategory = category; importSide = "back"; importer.launch(arrayOf("image/*")) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(cardHeight)
@@ -313,7 +318,7 @@ private fun FamilyHome() {
                                     )
                                 },
                             onClick = { expanded = if (expanded == category) null else category; importCategory = category },
-                            onImport = { importCategory = category; importer.launch(arrayOf("image/*", "application/pdf")) },
+                            onImport = { importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
                     }
@@ -322,6 +327,7 @@ private fun FamilyHome() {
         }
         Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 22.dp).size(68.dp).clickable {
             importCategory = expanded ?: categories.first()
+            importSide = "front"
             importer.launch(arrayOf("image/*", "application/pdf"))
         }) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.NoteAdd, "Add document", tint = Color.White, modifier = Modifier.size(34.dp)) }
@@ -397,6 +403,8 @@ private fun WalletCategoryCard(
     icon: ImageVector,
     documents: List<Doc>,
     height: androidx.compose.ui.unit.Dp,
+    isExpanded: Boolean,
+    onImportBack: () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onImport: () -> Unit,
@@ -410,9 +418,10 @@ private fun WalletCategoryCard(
         label = "wallet-card-scale"
     )
     val cardShape = RoundedCornerShape(20.dp)
+    var flipped by remember(name) { mutableStateOf(false) }
     val firstImage = documents.firstOrNull { doc ->
         val ext = File(doc.path).extension.lowercase()
-        ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
+        (doc.side == (if (flipped) "back" else "front")) && ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
     }
     val bitmap = remember(firstImage?.path) {
         firstImage?.let { runCatching { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }.getOrNull() }
@@ -430,6 +439,12 @@ private fun WalletCategoryCard(
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
             .clickable(interactionSource = source, indication = null, onClick = onClick)
+            .pointerInput(isExpanded, flipped) {
+                if (isExpanded) detectHorizontalDragGestures(onHorizontalDrag = { change, dragAmount ->
+                    change.consume()
+                    if (dragAmount.absoluteValue > 12f) flipped = dragAmount < 0f
+                })
+            }
     ) {
         if (bitmap != null) {
             Image(
@@ -461,7 +476,11 @@ private fun WalletCategoryCard(
             }
             Icon(Icons.Filled.ChevronRight, null, tint = if (bitmap != null) Color.White else Ink, modifier = Modifier.size(22.dp))
         }
-        if (bitmap == null) {
+        if (flipped && bitmap == null) {
+            Box(Modifier.fillMaxSize().clickable { onImportBack() }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Add, contentDescription = "添加卡片背面照片", tint = Ink.copy(alpha = .75f), modifier = Modifier.size(100.dp))
+            }
+        } else if (bitmap == null) {
             // Subtle EMV-chip motif gives empty categories a physical payment-card feel.
             Box(
                 Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 18.dp)
@@ -543,7 +562,7 @@ private fun readCategories(prefs: android.content.SharedPreferences): List<Strin
     }
 }
 
-private fun importFile(context: Context, uri: Uri, category: String, owner: String): Doc? {
+private fun importFile(context: Context, uri: Uri, category: String, owner: String, side: String = "front"): Doc? {
     return try {
         val name = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
             val i = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -553,17 +572,17 @@ private fun importFile(context: Context, uri: Uri, category: String, owner: Stri
         val target = File(dir, System.currentTimeMillis().toString() + "_" + name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
         val input = context.contentResolver.openInputStream(uri) ?: return null
         input.use { stream -> target.outputStream().use { output -> stream.copyTo(output) } }
-        Doc(name, target.absolutePath, category, owner)
+        Doc(name, target.absolutePath, category, owner, side)
     } catch (_: Exception) {
         null
     }
 }
 private fun readDocs(prefs: android.content.SharedPreferences): List<Doc> = try {
     val a = JSONArray(prefs.getString("docs", "[]"))
-    (0 until a.length()).map { a.getJSONObject(it).let { o -> Doc(o.getString("name"), o.getString("path"), o.getString("category"), o.getString("owner")) } }.filter { File(it.path).exists() }
+    (0 until a.length()).map { a.getJSONObject(it).let { o -> Doc(o.getString("name"), o.getString("path"), o.getString("category"), o.getString("owner"), o.optString("side", "front")) } }.filter { File(it.path).exists() }
 } catch (_: Exception) { emptyList() }
 private fun writeDocs(prefs: android.content.SharedPreferences, docs: List<Doc>) {
     val a = JSONArray()
-    docs.forEach { a.put(JSONObject().put("name", it.name).put("path", it.path).put("category", it.category).put("owner", it.owner)) }
+    docs.forEach { a.put(JSONObject().put("name", it.name).put("path", it.path).put("category", it.category).put("owner", it.owner).put("side", it.side)) }
     prefs.edit().putString("docs", a.toString()).apply()
 }
