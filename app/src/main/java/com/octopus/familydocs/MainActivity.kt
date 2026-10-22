@@ -238,7 +238,7 @@ private fun FamilyHome() {
         buildMap { val keys = json.keys(); while (keys.hasNext()) { val key = keys.next(); put(key, json.optString(key)) } }
     }.getOrDefault(emptyMap())) }
     var expanded by remember { mutableStateOf<String?>(null) }
-    var importCategory by remember { mutableStateOf(categories.first()) }
+    var importCategory by remember { mutableStateOf(categories.firstOrNull() ?: "身份证件") }
     var importSide by remember { mutableStateOf("front") }
     var replaceImportedSide by remember { mutableStateOf(false) }
     var docs by remember { mutableStateOf(readDocs(prefs)) }
