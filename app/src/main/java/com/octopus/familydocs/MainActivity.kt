@@ -273,7 +273,7 @@ private fun FamilyHome() {
                     docs.any { it.owner == selected && matchesCategory(it.category, category) } || category !in defaultCategories
                 }
                 // Keep the category order stable; selection changes the stack geometry, not the list order.
-                val ordered = visibleCategories
+                val ordered = visibleCategories.reversed()
                 val selectedIndexForHeight = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                 val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
@@ -335,7 +335,7 @@ private fun FamilyHome() {
                                                     val moved = reorderedVisible.removeAt(fromVisible)
                                                     reorderedVisible.add(toVisible, moved)
                                                     val hidden = categories.filterNot { it in ordered }
-                                                    val reordered = reorderedVisible + hidden
+                                                    val reordered = reorderedVisible.reversed() + hidden
                                                     categories = reordered
                                                     prefs.edit().putString("categories", JSONArray(reordered).toString()).apply()
                                                 }
