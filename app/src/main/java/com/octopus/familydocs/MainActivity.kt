@@ -22,11 +22,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.animation.AnimatedVisibility
@@ -362,7 +364,7 @@ private fun FamilyHome() {
                             documents = categoryDocs,
                             height = cardHeight,
                             isExpanded = expanded == category,
-                            onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDropUris = { uris ->
                                 val added = uris.mapNotNull { importFile(context, it, category, selected, "front") }
                                 if (added.isNotEmpty()) { docs = docs + added; writeDocs(prefs, docs) }
@@ -382,7 +384,7 @@ private fun FamilyHome() {
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onLongClick = { flipResetToken++; editingCategory = category },
-                            onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
                     }
@@ -424,7 +426,7 @@ private fun FamilyHome() {
                     OutlinedButton(
                         onClick = {
                             pendingAvatarMember = member
-                            avatarPicker.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(28.dp)
@@ -470,8 +472,8 @@ private fun FamilyHome() {
         AlertDialog(onDismissRequest = { editingCategory = null }, title = { Text("编辑证件卡片") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
-                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
+                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
+                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
@@ -553,6 +555,7 @@ private fun WalletCategoryCard(
     onImport: () -> Unit,
     onDelete: (Doc) -> Unit
 ) {
+    val context = LocalContext.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
