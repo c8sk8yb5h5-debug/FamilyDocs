@@ -303,7 +303,7 @@ private fun FamilyHome() {
                 val selectedIndexForHeight = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                 val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
-                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight)) {
+                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
                     if (ordered.isEmpty()) {
                         Text("还没有证件。点击右下角加号，导入银行卡或身份证照片。", color = Color.LightGray, modifier = Modifier.align(Alignment.Center).padding(20.dp))
                     }
@@ -491,7 +491,6 @@ private fun WalletCategoryCard(
     Box(
         modifier
             .scale(scale)
-            .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
             .pointerInput(name, flipped) {
@@ -510,13 +509,20 @@ private fun WalletCategoryCard(
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
         if (bitmap != null) {
-            Image(
-                bitmap = bitmap,
-                contentDescription = name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .24f)))
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    rotationY = flipRotation
+                    cameraDistance = 18 * density
+                }
+            ) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f }
+                )
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .24f)))
+            }
         } else {
             Box(
                 Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 18.dp)
