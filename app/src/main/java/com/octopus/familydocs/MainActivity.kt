@@ -895,7 +895,20 @@ private fun WalletCategoryCard(
             .shadow(elevation = 18.dp, shape = cardShape, clip = false)
             .clip(cardShape)
             .dragAndDropTarget(
-                shouldStartDragAndDrop = { event -> event.mimeTypes().any { it.startsWith("image/") } },
+                shouldStartDragAndDrop = { event ->
+                    val types = event.mimeTypes()
+                    types.any { type ->
+                        type.startsWith("image/") ||
+                            type == "text/uri-list" ||
+                            type == "application/vnd.android.cursor.item/image" ||
+                            type == "application/octet-stream"
+                    } || runCatching {
+                        val clip = event.toAndroidDragEvent().clipData
+                        clip != null && (0 until clip.itemCount).any { index ->
+                            clip.getItemAt(index).uri != null
+                        }
+                    }.getOrDefault(false)
+                },
                 target = remember {
                     object : DragAndDropTarget {
                         override fun onDrop(event: DragAndDropEvent): Boolean {
