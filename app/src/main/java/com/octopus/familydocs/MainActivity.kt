@@ -302,12 +302,14 @@ private fun FamilyHome() {
                                         onDragEnd = {
                                             if (expanded == null && ordered.size > 1) {
                                                 val shift = (dragDistance / stackStepPx).toInt()
-                                                val from = categories.indexOf(category)
-                                                val to = (from + shift).coerceIn(0, categories.lastIndex)
-                                                if (from != to && from >= 0) {
-                                                    val reordered = categories.toMutableList()
-                                                    val moved = reordered.removeAt(from)
-                                                    reordered.add(to, moved)
+                                                val fromVisible = ordered.indexOf(category)
+                                                val toVisible = (fromVisible + shift).coerceIn(0, ordered.lastIndex)
+                                                if (fromVisible != toVisible && fromVisible >= 0) {
+                                                    val reorderedVisible = ordered.toMutableList()
+                                                    val moved = reorderedVisible.removeAt(fromVisible)
+                                                    reorderedVisible.add(toVisible, moved)
+                                                    val hidden = categories.filterNot { it in ordered }
+                                                    val reordered = reorderedVisible + hidden
                                                     categories = reordered
                                                     prefs.edit().putString("categories", JSONArray(reordered).toString()).apply()
                                                 }
@@ -326,9 +328,8 @@ private fun FamilyHome() {
             }
         }
         Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 22.dp).size(68.dp).clickable {
-            importCategory = expanded ?: categories.first()
-            importSide = "front"
-            importer.launch(arrayOf("image/*", "application/pdf"))
+            folderText = ""
+            addFolder = true
         }) {
             Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.NoteAdd, "Add document", tint = Color.White, modifier = Modifier.size(34.dp)) }
         }
@@ -376,7 +377,7 @@ private fun FamilyHome() {
         text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
         dismissButton = { TextButton(onClick = { addMember = false }) { Text("取消") } })
-    if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("新建文件夹") },
+    if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("新增证件卡片") },
         text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("文件夹名称") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = folderText.trim(); if (n.isNotEmpty() && n !in categories) { categories = categories + n; prefs.edit().putString("categories", JSONArray(categories).toString()).apply(); expanded = n }; addFolder = false }) { Text("创建") } },
         dismissButton = { TextButton(onClick = { addFolder = false }) { Text("Cancel") } })
