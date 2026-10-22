@@ -225,18 +225,16 @@ private fun FamilyHome() {
     var replaceImportedSide by remember { mutableStateOf(false) }
     var docs by remember { mutableStateOf(readDocs(prefs)) }
     var addMember by remember { mutableStateOf(false) }
-    var addFolder by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var memberText by remember { mutableStateOf("") }
-    var folderText by remember { mutableStateOf("") }
     var editingMember by remember { mutableStateOf<String?>(null) }
     var editingMemberName by remember { mutableStateOf("") }
     var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     var editingCategory by remember { mutableStateOf<String?>(null) }
-    var editingCategoryName by remember { mutableStateOf("") }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
+    var flipResetToken by remember { mutableIntStateOf(0) }
     val galleryPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val file = pendingGalleryExport
         if (granted && file != null) Toast.makeText(context, if (exportImageToGallery(context, file)) "已导出到相册" else "导出失败", Toast.LENGTH_LONG).show()
@@ -275,14 +273,21 @@ private fun FamilyHome() {
             Spacer(Modifier.height(8.dp))
             Surface(color = HeaderBg, shape = RoundedCornerShape(42.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.height(76.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.size(42.dp).clickable { folderText = ""; addFolder = true }) {
+                    Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.size(42.dp).clickable {
+                            flipResetToken++
+                            val newCategory = "card_" + System.currentTimeMillis()
+                            categories = categories + newCategory
+                            categoryOwners = categoryOwners + (newCategory to selected)
+                            prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                            expanded = newCategory
+                        }) {
                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "新增证件卡片", tint = Color.White, modifier = Modifier.size(28.dp)) }
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("家庭证件夹", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("共 " + docs.size + " 张证件", color = Color.LightGray, fontSize = 12.sp)
                     }
-                    Icon(Icons.Filled.Settings, "设置", Modifier.size(28.dp).clickable { showSettings = true }, tint = Color.White)
+                    Icon(Icons.Filled.Settings, "设置", Modifier.size(28.dp).clickable { flipResetToken++; showSettings = true }, tint = Color.White)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -290,7 +295,7 @@ private fun FamilyHome() {
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
                     Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent)
-                        .combinedClickable(onClick = { selected = member }, onLongClick = { editingMember = member; editingMemberName = member })
+                        .combinedClickable(onClick = { flipResetToken++; selected = member }, onLongClick = { flipResetToken++; editingMember = member; editingMemberName = member })
                         .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
                         val avatarBitmap = remember(member, avatarPath) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
@@ -481,22 +486,6 @@ private fun FamilyHome() {
         text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
         dismissButton = { TextButton(onClick = { addMember = false }) { Text("取消") } })
-    if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("新增证件卡片") },
-        text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("文件夹名称") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = {
-            val n = folderText.trim()
-            if (n.isNotEmpty() && n !in categories) {
-                categories = categories + n
-                categoryOwners = categoryOwners + (n to selected)
-                prefs.edit()
-                    .putString("categories", JSONArray(categories).toString())
-                    .putString("category_owners", JSONObject(categoryOwners).toString())
-                    .apply()
-                expanded = n
-            }
-            addFolder = false
-        }) { Text("创建") } },
-        dismissButton = { TextButton(onClick = { addFolder = false }) { Text("Cancel") } })
     if (showSettings) AlertDialog(
         onDismissRequest = { showSettings = false },
         title = { Text("Settings") },
