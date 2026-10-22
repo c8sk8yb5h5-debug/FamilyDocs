@@ -100,7 +100,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.absoluteValue
 
-private val ScreenBg = Color(0xFF202122)
+private val ScreenBg = Color(0xFF262728)
 private val HeaderBg = Color(0xFF3A3B3D)
 private val Ink = Color(0xFF24292A)
 private val Pastels = listOf(Color(0xFF9ADDE7), Color(0xFF9FE8D3), Color(0xFFFFE5A5), Color(0xFFEBC9E0), Color(0xFFF2F0E7))
@@ -549,8 +549,8 @@ private fun FamilyHome() {
                 verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth(.62f)
-                        .clip(RoundedCornerShape(100.dp))
+                    modifier = Modifier.width(240.dp).heightIn(min = 390.dp)
+                        .clip(RoundedCornerShape(120.dp))
                         .background(Color.Black)
                         .padding(horizontal = 20.dp, vertical = 34.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
