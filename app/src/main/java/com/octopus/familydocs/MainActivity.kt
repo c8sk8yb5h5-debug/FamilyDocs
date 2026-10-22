@@ -366,10 +366,11 @@ private fun FamilyHome() {
                                     scaleX = lifting
                                     scaleY = lifting
                                 }
-                                .zIndex(if (liveDragOffset != 0f) ordered.size + 1f else (ordered.size - index).toFloat()),
-                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
-                            onLongClick = { editingCategory = category; editingCategoryName = category },
-                            onImport = { importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
+                                .zIndex(if (liveDragOffset != 0f || expanded == category) ordered.size + 1f else index.toFloat()),
+                            resetFlipToken = flipResetToken,
+                            onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
+                            onLongClick = { flipResetToken++; editingCategory = category },
+                            onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
                     }
@@ -496,6 +497,7 @@ private fun WalletCategoryCard(
     isExpanded: Boolean,
     onImportBack: () -> Unit,
     modifier: Modifier = Modifier,
+    resetFlipToken: Int,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onImport: () -> Unit,
@@ -509,7 +511,7 @@ private fun WalletCategoryCard(
         label = "wallet-card-scale"
     )
     val cardShape = RoundedCornerShape(20.dp)
-    var flipped by remember(name) { mutableStateOf(false) }
+    var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val flipRotation by animateFloatAsState(targetValue = if (flipped) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f), label = "card-flip-rotation")
     val firstImage = documents.firstOrNull { doc ->
         val ext = File(doc.path).extension.lowercase()
@@ -556,20 +558,6 @@ private fun WalletCategoryCard(
                         .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
             }
         }
-        Row(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 18.dp, vertical = 17.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(color = Color.White.copy(alpha = .9f), shape = CircleShape, modifier = Modifier.size(38.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = Ink, modifier = Modifier.size(21.dp)) }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(name, color = if (bitmap != null) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("$count 张证件", color = if (bitmap != null) Color.White.copy(alpha = .9f) else Ink.copy(alpha = .72f), fontSize = 11.sp)
-            }
-        }
-    }
 }
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
