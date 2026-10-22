@@ -753,10 +753,78 @@ private fun FamilyHome() {
             }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmDeleteMember = null }) { Text("取消") } })
     }
-    if (addMember) AlertDialog(onDismissRequest = { addMember = false }, title = { Text("Add a Member") },
-        text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
-        dismissButton = { TextButton(onClick = { addMember = false }) { Text("取消") } })
+    if (addMember) {
+        var addCapsuleScale by remember { mutableFloatStateOf(0.72f) }
+        val animatedAddCapsuleScale by animateFloatAsState(
+            targetValue = 1f,
+            animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow),
+            label = "add-member-capsule-jelly"
+        )
+        LaunchedEffect(Unit) { addCapsuleScale = 1f }
+        Dialog(onDismissRequest = { addMember = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth(0.62f)
+                    .graphicsLayer { scaleX = animatedAddCapsuleScale; scaleY = animatedAddCapsuleScale }
+                    .clip(RoundedCornerShape(100.dp))
+                    .background(Color.Black)
+                    .padding(horizontal = 20.dp, vertical = 34.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(104.dp).clip(CircleShape)
+                        .background(Color(0xFFCAD8D9))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { /* avatar selection is available after member creation */ }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(memberText.trim().firstOrNull()?.uppercase() ?: "+", color = Ink, fontSize = 42.sp, fontWeight = FontWeight.Medium)
+                }
+                OutlinedTextField(
+                    value = memberText,
+                    onValueChange = { memberText = it },
+                    singleLine = true,
+                    placeholder = { Text("姓名") },
+                    shape = RoundedCornerShape(28.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color.White.copy(alpha = 0.65f),
+                        unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                        cursorColor = Color.White
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(58.dp).clip(CircleShape).background(Color(0xFF333638))
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = { addMember = false }),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.Close, contentDescription = "取消", tint = Color(0xFFFF8A80), modifier = Modifier.size(28.dp)) }
+                    Box(
+                        Modifier.size(58.dp).clip(CircleShape).background(Color(0xFFA8E8DC)
+                        ).clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                val n = memberText.trim()
+                                if (n.isNotEmpty() && n !in members) {
+                                    members = members + n
+                                    prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                                    selected = n
+                                }
+                                addMember = false
+                            }
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) { Icon(Icons.Filled.Check, contentDescription = "确认", tint = Ink, modifier = Modifier.size(28.dp)) }
+                }
+            }
+        }
+    }
     if (showSettings) AlertDialog(
         onDismissRequest = { showSettings = false },
         title = { Text("Settings") },
