@@ -17,6 +17,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -49,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
@@ -280,6 +282,8 @@ private fun FamilyHome() {
                     ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                         var dragDistance by remember(category) { mutableFloatStateOf(0f) }
+                        val targetOffset = if (expanded == null) stackStep * index else if (index == 0) 0.dp else cardHeight + 16.dp + stackStep * (index - 1)
+                        val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
                         WalletCategoryCard(
                             name = category,
                             count = categoryDocs.size,
@@ -291,7 +295,7 @@ private fun FamilyHome() {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(cardHeight)
-                                .offset(y = if (expanded == null) stackStep * index else if (index == 0) 0.dp else cardHeight + 16.dp + stackStep * (index - 1))
+                                .offset(y = animatedOffset)
                                 .zIndex((ordered.size - index).toFloat())
                                 .pointerInput(ordered, expanded) {
                                     detectDragGesturesAfterLongPress(
@@ -421,6 +425,7 @@ private fun WalletCategoryCard(
     )
     val cardShape = RoundedCornerShape(20.dp)
     var flipped by remember(name) { mutableStateOf(false) }
+    val flipRotation by animateFloatAsState(targetValue = if (flipped) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f), label = "card-flip-rotation")
     val firstImage = documents.firstOrNull { doc ->
         val ext = File(doc.path).extension.lowercase()
         (doc.side == (if (flipped) "back" else "front")) && ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
@@ -438,6 +443,7 @@ private fun WalletCategoryCard(
     Box(
         modifier
             .scale(scale)
+            .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
             .pointerInput(isExpanded, flipped) {
