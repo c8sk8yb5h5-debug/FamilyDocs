@@ -239,6 +239,8 @@ private fun FamilyHome() {
     var memberText by remember { mutableStateOf("") }
     var editingMember by remember { mutableStateOf<String?>(null) }
     var editingMemberName by remember { mutableStateOf("") }
+    var editingMemberNameActive by remember { mutableStateOf(false) }
+    var avatarRefresh by remember { mutableIntStateOf(0) }
     var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     var editingCategory by remember { mutableStateOf<String?>(null) }
@@ -262,6 +264,7 @@ private fun FamilyHome() {
                     val target = File(dir, member.hashCode().toString() + "_avatar.jpg")
                     target.outputStream().use { output -> input.copyTo(output) }
                     prefs.edit().putString("member_avatar_" + member, target.absolutePath).apply()
+                    avatarRefresh++
                 }
             }
         }
@@ -305,10 +308,10 @@ private fun FamilyHome() {
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
                     Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent)
-                        .combinedClickable(onClick = { flipResetToken++; selected = member }, onLongClick = { flipResetToken++; editingMember = member; editingMemberName = member })
+                        .combinedClickable(onClick = { flipResetToken++; selected = member }, onLongClick = { flipResetToken++; editingMember = member; editingMemberName = member; editingMemberNameActive = false })
                         .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
-                        val avatarBitmap = remember(member, avatarPath) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
+                        val avatarBitmap = remember(member, avatarPath, avatarRefresh) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
                         Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (avatarBitmap != null) Image(avatarBitmap, contentDescription = "$member 头像", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
@@ -397,54 +400,92 @@ private fun FamilyHome() {
         val member = editingMember!!
         var dialogEntered by remember(member) { mutableStateOf(false) }
         val dialogScale by animateFloatAsState(
-            targetValue = if (dialogEntered) 1f else .78f,
-            animationSpec = spring(dampingRatio = .42f, stiffness = 420f),
+            targetValue = if (dialogEntered) 1f else .72f,
+            animationSpec = spring(dampingRatio = .42f, stiffness = 360f),
             label = "member-capsule-jelly"
         )
+        val avatarPath = prefs.getString("member_avatar_" + member, null)
+        val avatarBitmap = remember(member, avatarPath, avatarRefresh) {
+            avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() }
+        }
         LaunchedEffect(member) { dialogEntered = true }
         Dialog(onDismissRequest = { editingMember = null }) {
-            Surface(
-                color = HeaderBg,
-                shape = RoundedCornerShape(42.dp),
+            Column(
                 modifier = Modifier.fillMaxWidth().graphicsLayer {
                     scaleX = dialogScale
                     scaleY = dialogScale
-                }
+                },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(22.dp)
             ) {
                 Column(
-                    Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier.fillMaxWidth(.76f)
+                        .clip(RoundedCornerShape(100.dp))
+                        .background(Color.Black)
+                        .padding(horizontal = 24.dp, vertical = 30.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("编辑家庭成员", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        value = editingMemberName,
-                        onValueChange = { editingMemberName = it },
-                        label = { Text("姓名") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedButton(
-                        onClick = {
+                    Surface(
+                        color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[members.indexOf(member).coerceAtLeast(0) % 4],
+                        shape = CircleShape,
+                        modifier = Modifier.size(124.dp).clickable {
                             pendingAvatarMember = member
                             avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(28.dp)
-                    ) { Text("选择头像照片") }
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = { confirmDeleteMember = member; editingMember = null }) {
-                            Text("删除成员", color = MaterialTheme.colorScheme.error)
                         }
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = { editingMember = null }) { Text("取消") }
-                        TextButton(onClick = {
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (avatarBitmap != null) {
+                                Image(avatarBitmap, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 54.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                    if (editingMemberNameActive) {
+                        OutlinedTextField(
+                            value = editingMemberName,
+                            onValueChange = { editingMemberName = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(28.dp)
+                        )
+                    } else {
+                        Text(
+                            editingMemberName,
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.clip(RoundedCornerShape(20.dp)).clickable { editingMemberNameActive = true }
+                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        color = HeaderBg,
+                        shape = CircleShape,
+                        modifier = Modifier.size(58.dp).clickable {
+                            confirmDeleteMember = member
+                            editingMember = null
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Close, contentDescription = "删除成员", tint = Color(0xFFFF8A80), modifier = Modifier.size(28.dp))
+                        }
+                    }
+                    Surface(
+                        color = Color(0xFFB2F0DF),
+                        shape = CircleShape,
+                        modifier = Modifier.size(58.dp).clickable {
                             val newName = editingMemberName.trim()
-                            if (newName.isNotEmpty()) {
-                                if (newName != member && newName !in members) {
+                            if (newName.isNotEmpty() && (newName == member || newName !in members)) {
+                                if (newName != member) {
                                     members = members.map { if (it == member) newName else it }
                                     prefs.edit().putString("members", JSONArray(members).toString()).apply()
                                     val avatar = prefs.getString("member_avatar_" + member, null)
@@ -456,8 +497,13 @@ private fun FamilyHome() {
                                     if (selected == member) selected = newName
                                 }
                                 editingMember = null
+                                editingMemberNameActive = false
                             }
-                        }) { Text("保存") }
+                        }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Check, contentDescription = "确认", tint = Ink, modifier = Modifier.size(30.dp))
+                        }
                     }
                 }
             }
