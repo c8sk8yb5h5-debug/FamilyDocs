@@ -355,44 +355,6 @@ private fun FamilyHome() {
         }
     }
 
-    if (expanded != null) {
-        val activeCategory = expanded!!
-        val activeDocs = docs.filter { it.owner == selected && matchesCategory(it.category, activeCategory) }
-        AlertDialog(
-            onDismissRequest = { expanded = null },
-            title = { Text(activeCategory) },
-            text = {
-                Column(
-                    Modifier.fillMaxWidth().heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (activeDocs.isEmpty()) {
-                        Text("暂无证件，请点击下方加号导入银行卡或身份证照片。")
-                    }
-                    activeDocs.forEach { doc ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.CreditCard, null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(doc.name, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            TextButton(onClick = {
-                                File(doc.path).delete()
-                                docs = docs.filterNot { it == doc }
-                                writeDocs(prefs, docs)
-                            }) { Text("删除") }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    importCategory = activeCategory
-                    expanded = null
-                    importer.launch(arrayOf("image/*", "application/pdf"))
-                }) { Text("导入证件照片") }
-            },
-            dismissButton = { TextButton(onClick = { expanded = null }) { Text("关闭") } }
-        )
-    }
     if (addMember) AlertDialog(onDismissRequest = { addMember = false }, title = { Text("Add a Member") },
         text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
