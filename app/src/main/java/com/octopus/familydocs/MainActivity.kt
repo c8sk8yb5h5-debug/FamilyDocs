@@ -896,30 +896,44 @@ private fun WalletCategoryCard(
             .clip(cardShape)
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
-                    val types = event.mimeTypes()
-                    types.any { type ->
-                        type.startsWith("image/") ||
-                            type == "text/uri-list" ||
-                            type == "application/vnd.android.cursor.item/image" ||
-                            type == "application/octet-stream"
-                    } || runCatching {
-                        val clip = event.toAndroidDragEvent().clipData
-                        clip != null && (0 until clip.itemCount).any { index ->
-                            clip.getItemAt(index).uri != null
+                    runCatching {
+                        val androidEvent = event.toAndroidDragEvent()
+                        val clip = androidEvent.clipData
+                        val hasUri = clip != null && (0 until clip.itemCount).any { index ->
+                            val item = clip.getItemAt(index)
+                            item.uri != null || item.intent?.data != null ||
+                                item.text?.toString()?.startsWith("content://") == true
+                        }
+                        hasUri || event.mimeTypes().any { type ->
+                            type.startsWith("image/") || type == "text/uri-list" ||
+                                type == "application/vnd.android.cursor.item/image" ||
+                                type == "application/octet-stream"
                         }
                     }.getOrDefault(false)
                 },
                 target = remember {
                     object : DragAndDropTarget {
                         override fun onDrop(event: DragAndDropEvent): Boolean {
-                            val activity = context as? Activity
-                            val permission = activity?.requestDragAndDropPermissions(event.toAndroidDragEvent())
+                            val androidEvent = event.toAndroidDragEvent()
+                            val permission = runCatching {
+                                (context as? Activity)?.requestDragAndDropPermissions(androidEvent)
+                            }.getOrNull()
                             return try {
-                                val clip = event.toAndroidDragEvent().clipData
-                                val uris = (0 until clip.itemCount).mapNotNull { index -> clip.getItemAt(index).uri }
-                                if (uris.isEmpty()) false else { currentDropHandler(uris); true }
-                            } catch (_: Exception) { false }
-                            finally { permission?.release() }
+                                val clip = androidEvent.clipData ?: return false
+                                val uris = (0 until clip.itemCount).mapNotNull { index ->
+                                    val item = clip.getItemAt(index)
+                                    item.uri ?: item.intent?.data
+                                        ?: item.text?.toString()?.takeIf { it.startsWith("content://") }?.let(Uri::parse)
+                                }.distinct()
+                                if (uris.isEmpty()) false else {
+                                    currentDropHandler(uris)
+                                    true
+                                }
+                            } catch (_: Exception) {
+                                false
+                            } finally {
+                                permission?.release()
+                            }
                         }
                     }
                 }
