@@ -83,7 +83,7 @@ class MainActivity : ComponentActivity() {
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL("https://api.github.com/repos/c8sk8yb5h5-debug/FamilyDocs/releases/latest").openConnection() as HttpURLConnection).apply {
+                connection = (URL("https://api.github.com/repos/c8sk8yb5h5-debug/FamilyDocs-Updates/releases/latest").openConnection() as HttpURLConnection).apply {
                     connectTimeout = 12000
                     readTimeout = 12000
                     setRequestProperty("Accept", "application/vnd.github+json")
