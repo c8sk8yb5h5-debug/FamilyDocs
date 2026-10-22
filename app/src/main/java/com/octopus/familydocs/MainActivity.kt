@@ -29,6 +29,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -217,8 +218,26 @@ private fun FamilyHome() {
     var showSettings by remember { mutableStateOf(false) }
     var memberText by remember { mutableStateOf("") }
     var folderText by remember { mutableStateOf("") }
+    var editingMember by remember { mutableStateOf<String?>(null) }
+    var editingMemberName by remember { mutableStateOf("") }
+    var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
+    var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val member = pendingAvatarMember
+        if (uri != null && member != null) {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    val dir = File(context.filesDir, "member-avatars").apply { mkdirs() }
+                    val target = File(dir, member.hashCode().toString() + "_avatar.jpg")
+                    target.outputStream().use { output -> input.copyTo(output) }
+                    prefs.edit().putString("member_avatar_" + member, target.absolutePath).apply()
+                }
+            }
+        }
+        pendingAvatarMember = null
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val added = uris.mapNotNull { importFile(context, it, importCategory, selected, importSide) }
         importSide = "front"
@@ -232,7 +251,9 @@ private fun FamilyHome() {
             Spacer(Modifier.height(8.dp))
             Surface(color = HeaderBg, shape = RoundedCornerShape(42.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.height(76.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Dashboard, "首页", Modifier.size(28.dp).clickable { scope.launch { scroll.animateScrollTo(0) } }, tint = Color.White)
+                    Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.size(42.dp).clickable { folderText = ""; addFolder = true }) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "新增证件卡片", tint = Color.White, modifier = Modifier.size(28.dp)) }
+                    }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("家庭证件夹", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Text("共 " + docs.size + " 张证件", color = Color.LightGray, fontSize = 12.sp)
@@ -244,10 +265,15 @@ private fun FamilyHome() {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
-                    Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent).clickable { selected = member }.padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.scale(selectedScale).clip(RoundedCornerShape(34.dp)).background(if (member == selected) Color.Black else Color.Transparent)
+                        .combinedClickable(onClick = { selected = member }, onLongClick = { editingMember = member; editingMemberName = member })
+                        .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        val avatarPath = prefs.getString("member_avatar_" + member, null)
+                        val avatarBitmap = remember(member, avatarPath) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
                         Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                                if (avatarBitmap != null) Image(avatarBitmap, contentDescription = "$member 头像", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                else Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                         Spacer(Modifier.height(5.dp))
@@ -355,14 +381,51 @@ private fun FamilyHome() {
                 }
             }
         }
-        Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 24.dp, bottom = 22.dp).size(68.dp).clickable {
-            folderText = ""
-            addFolder = true
-        }) {
-            Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.NoteAdd, "Add document", tint = Color.White, modifier = Modifier.size(34.dp)) }
-        }
     }
 
+    if (editingMember != null) {
+        val member = editingMember!!
+        AlertDialog(
+            onDismissRequest = { editingMember = null },
+            title = { Text("编辑家庭成员") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(editingMemberName, { editingMemberName = it }, label = { Text("姓名") }, singleLine = true)
+                OutlinedButton(onClick = { pendingAvatarMember = member; avatarPicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) { Text("选择头像照片") }
+                Text("删除成员不会自动删除已导入的证件文件。", color = Color.Gray, fontSize = 12.sp)
+            } },
+            confirmButton = { TextButton(onClick = {
+                val newName = editingMemberName.trim()
+                if (newName.isNotEmpty()) {
+                    if (newName != member && newName !in members) {
+                        members = members.map { if (it == member) newName else it }
+                        prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                        val avatar = prefs.getString("member_avatar_" + member, null)
+                        if (avatar != null) prefs.edit().putString("member_avatar_" + newName, avatar).remove("member_avatar_" + member).apply()
+                        docs = docs.map { if (it.owner == member) it.copy(owner = newName) else it }
+                        writeDocs(prefs, docs)
+                        if (selected == member) selected = newName
+                    }
+                    editingMember = null
+                }
+            }) { Text("保存") } },
+            dismissButton = { Row {
+                TextButton(onClick = { confirmDeleteMember = member; editingMember = null }) { Text("删除成员", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { editingMember = null }) { Text("取消") }
+            } }
+        )
+    }
+    if (confirmDeleteMember != null) {
+        val member = confirmDeleteMember!!
+        AlertDialog(onDismissRequest = { confirmDeleteMember = null }, title = { Text("删除家庭成员？") },
+            text = { Text("将从家庭成员列表中移除“" + member + "”。已导入的证件文件会保留在本机。") },
+            confirmButton = { TextButton(onClick = {
+                members = members.filterNot { it == member }
+                prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
+                if (selected == member) selected = members.firstOrNull() ?: ""
+                confirmDeleteMember = null
+            }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { confirmDeleteMember = null }) { Text("取消") } })
+    }
     if (addMember) AlertDialog(onDismissRequest = { addMember = false }, title = { Text("Add a Member") },
         text = { OutlinedTextField(memberText, { memberText = it }, label = { Text("成员姓名") }, singleLine = true) },
         confirmButton = { TextButton(onClick = { val n = memberText.trim(); if (n.isNotEmpty() && n !in members) { members = members + n; prefs.edit().putString("members", JSONArray(members).toString()).apply(); selected = n }; addMember = false }) { Text("添加") } },
