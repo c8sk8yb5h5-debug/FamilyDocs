@@ -266,8 +266,9 @@ private fun FamilyHome() {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
                 val stackStepPx = with(LocalDensity.current) { stackStep.toPx() }
+                val defaultCategories = setOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents", "身份证件", "银行卡", "家庭资料", "其他证件")
                 val visibleCategories = categories.filter { category ->
-                    docs.any { it.owner == selected && matchesCategory(it.category, category) }
+                    docs.any { it.owner == selected && matchesCategory(it.category, category) } || category !in defaultCategories
                 }
                 val ordered = if (expanded != null && expanded in visibleCategories) {
                     listOf(expanded!!) + visibleCategories.filterNot { it == expanded }
@@ -439,7 +440,6 @@ private fun WalletCategoryCard(
             .scale(scale)
             .clip(cardShape)
             .background(Brush.linearGradient(gradient))
-            .clickable(interactionSource = source, indication = null, onClick = onClick)
             .pointerInput(isExpanded, flipped) {
                 if (isExpanded) {
                     var horizontalDistance = 0f
@@ -454,6 +454,7 @@ private fun WalletCategoryCard(
                     )
                 }
             }
+            .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
         if (bitmap != null) {
             Image(
