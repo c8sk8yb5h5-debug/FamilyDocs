@@ -527,7 +527,7 @@ private fun FamilyHome() {
                                     style = Stroke(width = 3.dp.toPx())
                                 )
                             }
-                        }.clickable(
+                        }.combinedClickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = {
@@ -535,12 +535,9 @@ private fun FamilyHome() {
                                     editingMember = null
                                     editingMemberNameActive = false
                                 }
-                            }
-                        ).pointerInput(member) {
-                            androidx.compose.foundation.gestures.detectTapGestures(
-                                onLongPress = { holdDeleteStarted = true }
-                            )
-                        }
+                            },
+                            onLongClick = { holdDeleteStarted = true }
+                        )
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(Icons.Filled.Close, contentDescription = "删除成员", tint = Color(0xFFFF8A80), modifier = Modifier.size(28.dp))
