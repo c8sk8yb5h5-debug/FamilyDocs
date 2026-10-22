@@ -155,7 +155,8 @@ class MainActivity : ComponentActivity() {
             var file: File? = null
             try {
                 val dir = File(filesDir, "updates").apply { mkdirs() }
-                file = File(dir, "FamilyDocs-update.apk").also { if (it.exists()) it.delete() }
+                val targetFile = File(dir, "FamilyDocs-update.apk").also { if (it.exists()) it.delete() }
+                file = targetFile
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 20000
                     readTimeout = 30000
@@ -164,12 +165,12 @@ class MainActivity : ComponentActivity() {
                 }
                 try {
                     if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
-                    conn.inputStream.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
+                    conn.inputStream.use { input -> targetFile.outputStream().use { output -> input.copyTo(output) } }
                 } finally { conn.disconnect() }
-                if (!file.exists() || file.length() < 100000) throw IllegalStateException("APK 文件不完整")
+                if (!targetFile.exists() || targetFile.length() < 100000) throw IllegalStateException("APK 文件不完整")
                 runOnUiThread {
                     try {
-                        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file!!)
+                        val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", targetFile)
                         val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
                             data = uri
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
