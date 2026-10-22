@@ -57,6 +57,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.horizontalScroll
@@ -335,7 +336,7 @@ private fun FamilyHome() {
             }
             Spacer(Modifier.height(18.dp))
             BoxWithConstraints(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(bottom = 26.dp)
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = expanded == null).then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier).padding(bottom = 26.dp)
             ) {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
@@ -719,12 +720,12 @@ private fun WalletCategoryCard(
                     }
                 }
             )
-            .pointerInput(name, resetFlipToken) {
+            .pointerInput(name, resetFlipToken, isExpanded) {
                 var horizontalDistance = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { horizontalDistance = 0f },
                     onDragEnd = {
-                        if (horizontalDistance.absoluteValue > 48f) flipped = !currentFlipped
+                        if (isExpanded && horizontalDistance.absoluteValue > 48f) flipped = !currentFlipped
                     },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
