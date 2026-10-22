@@ -12,8 +12,8 @@ android {
         applicationId = "com.octopus.familydocs"
         minSdk = 26
         targetSdk = 36
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 3
-        versionName = "0.3." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        versionCode = System.getenv("APP_VERSION_CODE")?.toIntOrNull() ?: 3
+        versionName = System.getenv("APP_VERSION_NAME") ?: "0.3.0"
     }
     buildFeatures { compose = true }
     compileOptions {
