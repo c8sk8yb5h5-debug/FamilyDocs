@@ -773,12 +773,7 @@ private fun FamilyHome() {
             ) {
                 Box(
                     modifier = Modifier.size(104.dp).clip(CircleShape)
-                        .background(Color(0xFFCAD8D9))
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { /* avatar selection is available after member creation */ }
-                        ),
+                        .background(Color(0xFFCAD8D9)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(memberText.trim().firstOrNull()?.uppercase() ?: "+", color = Ink, fontSize = 42.sp, fontWeight = FontWeight.Medium)
