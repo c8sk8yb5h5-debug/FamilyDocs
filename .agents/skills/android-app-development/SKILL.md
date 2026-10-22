@@ -45,3 +45,8 @@ Before declaring completion, check:
 - [ ] Signing checks were run if releasing a signed APK.
 - [ ] The exact CI run and artifact/release asset were verified before claims or links.
 - [ ] Any unperformed real-device checks are clearly identified.
+
+## Post-installation confirmation and release baseline
+
+When the user confirms a release APK installs and launches successfully, record that exact version as the known-good baseline in the repository's development notes/README, including the release tag and source commit SHA. Preserve the existing persistent signing keystore and secrets; never rotate/regenerate them for routine updates. Continue all later work in the same repository, increment versionCode for every published APK, and verify the next release's APK asset and signature continuity before asking the user to use in-app update. A successful launch confirms installation/startup only; do not claim the in-app update path is tested until a newer version has actually been installed through the app's update flow.
+
