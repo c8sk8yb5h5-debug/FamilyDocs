@@ -78,12 +78,12 @@ class MainActivity : ComponentActivity() {
         checkForUpdates(showUpToDate = false)
     }
 
-    private fun checkForUpdates(showUpToDate: Boolean) {
+    fun checkForUpdates(showUpToDate: Boolean) {
         if (showUpToDate) Toast.makeText(this, "正在检查更新…", Toast.LENGTH_SHORT).show()
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                connection = (URL("https://api.github.com/repos/c8sk8yb5h5-debug/FamilyDocs-Updates/releases/latest").openConnection() as HttpURLConnection).apply {
+                connection = (URL("https://api.github.com/repos/c8sk8yb5h5-debug/FamilyDocs/releases/latest").openConnection() as HttpURLConnection).apply {
                     connectTimeout = 12000
                     readTimeout = 12000
                     setRequestProperty("Accept", "application/vnd.github+json")
