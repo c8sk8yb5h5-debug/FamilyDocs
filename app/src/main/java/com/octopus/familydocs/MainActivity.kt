@@ -405,6 +405,8 @@ private fun FamilyHome() {
                         if (avatar != null) prefs.edit().putString("member_avatar_" + newName, avatar).remove("member_avatar_" + member).apply()
                         docs = docs.map { if (it.owner == member) it.copy(owner = newName) else it }
                         writeDocs(prefs, docs)
+                        categoryOwners = categoryOwners.mapValues { (_, owner) -> if (owner == member) newName else owner }
+                        prefs.edit().putString("category_owners", JSONObject(categoryOwners).toString()).apply()
                         if (selected == member) selected = newName
                     }
                     editingMember = null
