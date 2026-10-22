@@ -1,6 +1,8 @@
 package com.octopus.familydocs
 
 import android.content.Context
+import android.content.ClipDescription
+import android.app.Activity
 import android.content.ContentValues
 import android.Manifest
 import android.os.Environment
@@ -20,6 +22,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.ui.draganddrop.DragAndDropEvent
+import androidx.compose.ui.draganddrop.DragAndDropTarget
+import androidx.compose.ui.draganddrop.toAndroidDragEvent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
@@ -66,7 +75,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -243,7 +251,7 @@ private fun FamilyHome() {
     }
     val scroll = rememberScrollState()
     val scope = rememberCoroutineScope()
-    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    val avatarPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val member = pendingAvatarMember
         if (uri != null && member != null) {
             runCatching {
@@ -257,7 +265,7 @@ private fun FamilyHome() {
         }
         pendingAvatarMember = null
     }
-    val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+    val importer = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
         val oldSide = if (replaceImportedSide) docs.filter { it.owner == selected && matchesCategory(it.category, importCategory) && it.side == importSide } else emptyList()
         oldSide.forEach { File(it.path).delete() }
         val added = uris.mapNotNull { importFile(context, it, importCategory, selected, importSide) }
@@ -354,7 +362,11 @@ private fun FamilyHome() {
                             documents = categoryDocs,
                             height = cardHeight,
                             isExpanded = expanded == category,
-                            onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(arrayOf("image/*")) },
+                            onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            onDropUris = { uris ->
+                                val added = uris.mapNotNull { importFile(context, it, category, selected, "front") }
+                                if (added.isNotEmpty()) { docs = docs + added; writeDocs(prefs, docs) }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(cardHeight)
@@ -370,7 +382,7 @@ private fun FamilyHome() {
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onLongClick = { flipResetToken++; editingCategory = category },
-                            onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
+                            onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
                     }
@@ -386,7 +398,7 @@ private fun FamilyHome() {
             title = { Text("编辑家庭成员") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(editingMemberName, { editingMemberName = it }, label = { Text("姓名") }, singleLine = true)
-                OutlinedButton(onClick = { pendingAvatarMember = member; avatarPicker.launch(arrayOf("image/*")) }, modifier = Modifier.fillMaxWidth()) { Text("选择头像照片") }
+                OutlinedButton(onClick = { pendingAvatarMember = member; avatarPicker.launch(ActivityResultContracts.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.fillMaxWidth()) { Text("选择头像照片") }
                 Text("删除成员不会自动删除已导入的证件文件。", color = Color.Gray, fontSize = 12.sp)
             } },
             confirmButton = { TextButton(onClick = {
@@ -428,7 +440,6 @@ private fun FamilyHome() {
                     OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
                     OutlinedButton(onClick = { backPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "反面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = backPhoto != null, modifier = Modifier.weight(1f)) { Text("导出反面") }
                 }
-                Text("仅删除 FamilyDocs 保存的副本，不会删除手机相册中的原始照片。", color = Color.Gray, fontSize = 12.sp)
             } },
             confirmButton = { TextButton(onClick = { editingCategory = null }) { Text("完成") } },
             dismissButton = { TextButton(onClick = { flipResetToken++; confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) } }
@@ -438,7 +449,6 @@ private fun FamilyHome() {
     if (confirmDeleteCategory != null) {
         val category = confirmDeleteCategory!!
         AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
-            text = { Text("将删除此卡片以及 FamilyDocs 在应用内部保存的证件副本；不会删除手机相册中的原始照片。此操作不可撤销。") },
             confirmButton = { TextButton(onClick = {
                 flipResetToken++
                 val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
@@ -488,6 +498,7 @@ private fun FamilyHome() {
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun WalletCategoryCard(
     name: String,
@@ -497,6 +508,7 @@ private fun WalletCategoryCard(
     height: androidx.compose.ui.unit.Dp,
     isExpanded: Boolean,
     onImportBack: () -> Unit,
+    onDropUris: (List<Uri>) -> Unit,
     modifier: Modifier = Modifier,
     resetFlipToken: Int,
     onClick: () -> Unit,
@@ -513,6 +525,7 @@ private fun WalletCategoryCard(
     )
     val cardShape = RoundedCornerShape(20.dp)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
+    val currentFlipped by rememberUpdatedState(flipped)
     val flipRotation by animateFloatAsState(targetValue = if (flipped) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f), label = "card-flip-rotation")
     val firstImage = documents.firstOrNull { doc ->
         val ext = File(doc.path).extension.lowercase()
@@ -533,12 +546,29 @@ private fun WalletCategoryCard(
             .scale(scale)
             .shadow(elevation = 18.dp, shape = cardShape, clip = false)
             .clip(cardShape)
-            .pointerInput(name, flipped) {
+            .dragAndDropTarget(
+                shouldStartDragAndDrop = { event -> event.mimeTypes().any { it.startsWith("image/") } },
+                target = remember {
+                    object : DragAndDropTarget {
+                        override fun onDrop(event: DragAndDropEvent): Boolean {
+                            val activity = context as? Activity
+                            val permission = activity?.requestDragAndDropPermissions(event.toAndroidDragEvent())
+                            return try {
+                                val clip = event.toAndroidDragEvent().clipData
+                                val uris = (0 until clip.itemCount).mapNotNull { index -> clip.getItemAt(index).uri }
+                                if (uris.isEmpty()) false else { onDropUris(uris); true }
+                            } catch (_: Exception) { false }
+                            finally { permission?.release() }
+                        }
+                    }
+                }
+            )
+            .pointerInput(name, resetFlipToken) {
                 var horizontalDistance = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { horizontalDistance = 0f },
                     onDragEnd = {
-                        if (horizontalDistance.absoluteValue > 48f) flipped = !flipped
+                        if (horizontalDistance.absoluteValue > 48f) flipped = !currentFlipped
                     },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
