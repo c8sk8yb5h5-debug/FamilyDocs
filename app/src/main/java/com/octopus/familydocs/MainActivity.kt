@@ -361,8 +361,8 @@ private fun FamilyHome() {
                                     scaleX = lifting
                                     scaleY = lifting
                                 }
-                                .zIndex(if (liveDragOffset != 0f) ordered.size + 1f else (ordered.size - index).toFloat())
-                                                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
+                                .zIndex(if (liveDragOffset != 0f) ordered.size + 1f else (ordered.size - index).toFloat()),
+                            onClick = { expanded = if (expanded == category) null else category; importCategory = category },
                             onLongClick = { editingCategory = category; editingCategoryName = category },
                             onImport = { importCategory = category; importSide = "front"; importer.launch(arrayOf("image/*", "application/pdf")) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
@@ -601,7 +601,7 @@ private fun WalletCategoryCard(
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
     if (Build.VERSION.SDK_INT >= 29) done(exportImageToGallery(context, file))
-    else if (android.content.ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) done(exportImageToGallery(context, file))
+    else if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) done(exportImageToGallery(context, file))
     else { setPending(file); requestPermission() }
 }
 
