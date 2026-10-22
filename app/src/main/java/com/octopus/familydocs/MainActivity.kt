@@ -280,11 +280,8 @@ private fun FamilyHome() {
                         Text(member, color = Color.White, fontSize = 11.sp, maxLines = 1)
                     }
                 }
-                Column(Modifier.width(60.dp).clickable { memberText = ""; addMember = true }, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.size(52.dp)) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
-                    }
-                    Text("添加家庭成员", color = Color.LightGray, fontSize = 10.sp, lineHeight = 12.sp)
+                Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.size(52.dp).clickable { memberText = ""; addMember = true }) {
+                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -297,6 +294,12 @@ private fun FamilyHome() {
                 val defaultCategories = setOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents", "身份证件", "银行卡", "家庭资料", "其他证件")
                 val visibleCategories = categories.filter { category ->
                     docs.any { it.owner == selected && matchesCategory(it.category, category) } || category !in defaultCategories
+                }.let { visible ->
+                    // Show custom categories only for their selected owner when they have no documents.
+                    visible.filter { category ->
+                        docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
+                            category !in defaultCategories && docs.none { it.owner == selected && matchesCategory(it.category, category) }
+                    }
                 }
                 // Keep the category order stable; selection changes the stack geometry, not the list order.
                 val ordered = visibleCategories.reversed()
@@ -508,31 +511,32 @@ private fun WalletCategoryCard(
             }
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
-        if (bitmap != null) {
-            Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    rotationY = flipRotation
-                    cameraDistance = 18 * density
-                }
-            ) {
+        val cardFront = !flipped
+        val displayedBitmap = if (cardFront) bitmap else bitmap
+        if (displayedBitmap != null) {
+            Box(Modifier.fillMaxSize().graphicsLayer {
+                rotationY = flipRotation
+                cameraDistance = 18 * density
+            }) {
                 Image(
-                    bitmap = bitmap,
+                    bitmap = displayedBitmap,
                     contentDescription = name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f }
                 )
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .24f)))
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
             }
         } else {
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 18.dp)
-                    .size(width = 116.dp, height = 70.dp)
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(Color.White.copy(alpha = .18f))
-            )
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (flipped) {
+                    Icon(Icons.Filled.Add, contentDescription = "添加卡片背面照片", tint = Ink.copy(alpha = .72f), modifier = Modifier.size(92.dp).clickable { onImportBack() })
+                } else {
+                    Icon(Icons.Filled.Add, contentDescription = "导入证件照片", tint = Ink.copy(alpha = .72f), modifier = Modifier.size(92.dp).clickable { onImport() })
+                }
+            }
         }
         Row(
-            Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 18.dp, vertical = 17.dp),
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 18.dp, vertical = 17.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Surface(color = Color.White.copy(alpha = .9f), shape = CircleShape, modifier = Modifier.size(38.dp)) {
@@ -543,28 +547,6 @@ private fun WalletCategoryCard(
                 Text(name, color = if (bitmap != null) Color.White else Ink, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("$count 张证件", color = if (bitmap != null) Color.White.copy(alpha = .9f) else Ink.copy(alpha = .72f), fontSize = 11.sp)
             }
-            Icon(Icons.Filled.ChevronRight, null, tint = if (bitmap != null) Color.White else Ink, modifier = Modifier.size(22.dp))
-        }
-        if (flipped && bitmap == null) {
-            Box(Modifier.fillMaxSize().clickable { onImportBack() }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.Add, contentDescription = "添加卡片背面照片", tint = Ink.copy(alpha = .75f), modifier = Modifier.size(100.dp))
-            }
-        } else if (bitmap == null) {
-            // Subtle EMV-chip motif gives empty categories a physical payment-card feel.
-            Box(
-                Modifier.align(Alignment.BottomStart).padding(start = 22.dp, bottom = 18.dp)
-                    .size(width = 42.dp, height = 32.dp).clip(RoundedCornerShape(7.dp))
-                    .background(Color(0xFFD7D3B9).copy(alpha = .95f))
-            ) {
-                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-                    val stroke = 1.dp.toPx()
-                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(size.width * .33f, 0f), androidx.compose.ui.geometry.Offset(size.width * .33f, size.height), stroke)
-                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(size.width * .66f, 0f), androidx.compose.ui.geometry.Offset(size.width * .66f, size.height), stroke)
-                    drawLine(Ink.copy(alpha = .45f), androidx.compose.ui.geometry.Offset(0f, size.height * .5f), androidx.compose.ui.geometry.Offset(size.width, size.height * .5f), stroke)
-                }
-            }
-            Text("家庭证件", color = Ink.copy(alpha = .48f), fontSize = 10.sp, letterSpacing = 2.sp,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 23.dp))
         }
     }
 }
