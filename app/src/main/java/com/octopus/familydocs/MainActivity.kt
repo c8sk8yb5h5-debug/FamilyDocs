@@ -222,6 +222,7 @@ private fun FamilyHome() {
     var expanded by remember { mutableStateOf<String?>(null) }
     var importCategory by remember { mutableStateOf(categories.first()) }
     var importSide by remember { mutableStateOf("front") }
+    var replaceImportedSide by remember { mutableStateOf(false) }
     var docs by remember { mutableStateOf(readDocs(prefs)) }
     var addMember by remember { mutableStateOf(false) }
     var addFolder by remember { mutableStateOf(false) }
@@ -259,9 +260,12 @@ private fun FamilyHome() {
         pendingAvatarMember = null
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val oldSide = if (replaceImportedSide) docs.filter { it.owner == selected && matchesCategory(it.category, importCategory) && it.side == importSide } else emptyList()
+        oldSide.forEach { File(it.path).delete() }
         val added = uris.mapNotNull { importFile(context, it, importCategory, selected, importSide) }
         importSide = "front"
-        val updatedDocs = docs + added
+        replaceImportedSide = false
+        val updatedDocs = docs.filterNot { it in oldSide } + added
         docs = updatedDocs
         writeDocs(prefs, updatedDocs)
     }
@@ -323,7 +327,7 @@ private fun FamilyHome() {
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
                 Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
                     if (ordered.isEmpty()) {
-                        Text("还没有证件。点击右下角加号，导入银行卡或身份证照片。", color = Color.LightGray, modifier = Modifier.align(Alignment.Center).padding(20.dp))
+                        Text("", modifier = Modifier.align(Alignment.Center))
                     }
                     ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
@@ -414,8 +418,8 @@ private fun FamilyHome() {
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(editingCategoryName, { editingCategoryName = it }, label = { Text("卡片名称") }, singleLine = true)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { importCategory = category; importSide = "front"; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
-                    OutlinedButton(onClick = { importCategory = category; importSide = "back"; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
+                    OutlinedButton(onClick = { importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
+                    OutlinedButton(onClick = { importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(arrayOf("image/*")) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
@@ -451,8 +455,11 @@ private fun FamilyHome() {
                 val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                 removed.forEach { File(it.path).delete() }
                 docs = docs.filterNot { it in removed }
-                categories = categories.filterNot { it == category }
-                categoryOwners = categoryOwners - category
+                val hasOtherOwners = docs.any { it.owner != selected && matchesCategory(it.category, category) }
+                if (!hasOtherOwners) {
+                    categories = categories.filterNot { it == category }
+                    categoryOwners = categoryOwners - category
+                }
                 prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
                 writeDocs(prefs, docs)
                 if (expanded == category) expanded = null
