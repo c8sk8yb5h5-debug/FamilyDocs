@@ -407,10 +407,24 @@ private fun FamilyHome() {
                     ) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
                         val avatarBitmap = remember(member, avatarPath, avatarRefresh) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
+                        val savedAvatarScale = prefs.getFloat("member_avatar_scale_" + member, 1f)
+                        val savedAvatarX = prefs.getFloat("member_avatar_x_" + member, 0f)
+                        val savedAvatarY = prefs.getFloat("member_avatar_y_" + member, 0f)
                         Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                if (avatarBitmap != null) Image(avatarBitmap, contentDescription = "$member 头像", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                                else Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Medium)
+                                if (avatarBitmap != null) {
+                                    Image(
+                                        avatarBitmap,
+                                        contentDescription = "$member 头像",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize().graphicsLayer {
+                                            scaleX = savedAvatarScale
+                                            scaleY = savedAvatarScale
+                                            translationX = savedAvatarX * size.width
+                                            translationY = savedAvatarY * size.height
+                                        }
+                                    )
+                                } else Text(member.firstOrNull()?.uppercase() ?: "•", color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Medium)
                             }
                         }
                         Spacer(Modifier.height(5.dp))
@@ -494,9 +508,9 @@ private fun FamilyHome() {
     if (editingMember != null) {
         val member = editingMember!!
         var holdDeleteStarted by remember(member) { mutableStateOf(false) }
-        var photoScale by remember(member) { mutableFloatStateOf(1f) }
-        var photoOffsetX by remember(member) { mutableFloatStateOf(0f) }
-        var photoOffsetY by remember(member) { mutableFloatStateOf(0f) }
+        var photoScale by remember(member) { mutableFloatStateOf(prefs.getFloat("member_avatar_scale_" + member, 1f)) }
+        var photoOffsetX by remember(member) { mutableFloatStateOf(prefs.getFloat("member_avatar_x_" + member, 0f)) }
+        var photoOffsetY by remember(member) { mutableFloatStateOf(prefs.getFloat("member_avatar_y_" + member, 0f)) }
         val deleteProgress by animateFloatAsState(
             targetValue = if (holdDeleteStarted) 1f else 0f,
             animationSpec = androidx.compose.animation.core.tween(durationMillis = 2000),
@@ -554,10 +568,14 @@ private fun FamilyHome() {
                             if (avatarBitmap != null) {
                                 Box(
                                     Modifier.fillMaxSize().clip(CircleShape).pointerInput(member) {
-                                        detectTransformGestures { _, pan, zoom, _ ->
-                                            photoScale = (photoScale * zoom).coerceIn(1f, 5f)
-                                            photoOffsetX += pan.x
-                                            photoOffsetY += pan.y
+                                        detectTransformGestures { centroid, pan, zoom, _ ->
+                                            val viewWidth = size.width.coerceAtLeast(1).toFloat()
+                                            val viewHeight = size.height.coerceAtLeast(1).toFloat()
+                                            val nextScale = (photoScale * zoom).coerceIn(1f, 5f)
+                                            val scaleFactor = nextScale / photoScale
+                                            photoOffsetX = (photoOffsetX * scaleFactor + pan.x / viewWidth).coerceIn(-1.5f, 1.5f)
+                                            photoOffsetY = (photoOffsetY * scaleFactor + pan.y / viewHeight).coerceIn(-1.5f, 1.5f)
+                                            photoScale = nextScale
                                         }
                                     }
                                 ) {
@@ -568,8 +586,8 @@ private fun FamilyHome() {
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
                                             scaleX = photoScale
                                             scaleY = photoScale
-                                            translationX = photoOffsetX
-                                            translationY = photoOffsetY
+                                            translationX = photoOffsetX * size.width
+                                            translationY = photoOffsetY * size.height
                                         }
                                     )
                                 }
@@ -652,6 +670,21 @@ private fun FamilyHome() {
                                     categoryOwners = categoryOwners.mapValues { (_, owner) -> if (owner == member) newName else owner }
                                     prefs.edit().putString("category_owners", JSONObject(categoryOwners).toString()).apply()
                                     if (selected == member) selected = newName
+                                }
+                                prefs.edit()
+                                    .putFloat("member_avatar_scale_" + newName, photoScale)
+                                    .putFloat("member_avatar_x_" + newName, photoOffsetX)
+                                    .putFloat("member_avatar_y_" + newName, photoOffsetY)
+                                    .apply()
+                                if (newName != member) {
+                                    prefs.edit()
+                                        .putFloat("member_avatar_scale_" + newName, photoScale)
+                                        .putFloat("member_avatar_x_" + newName, photoOffsetX)
+                                        .putFloat("member_avatar_y_" + newName, photoOffsetY)
+                                        .remove("member_avatar_scale_" + member)
+                                        .remove("member_avatar_x_" + member)
+                                        .remove("member_avatar_y_" + member)
+                                        .apply()
                                 }
                                 editingMember = null
                                 editingMemberNameActive = false
