@@ -471,8 +471,11 @@ private fun FamilyHome() {
                         color = HeaderBg,
                         shape = CircleShape,
                         modifier = Modifier.size(58.dp).clickable {
-                            confirmDeleteMember = member
+                            members = members.filterNot { it == member }
+                            prefs.edit().putString("members", JSONArray(members).toString()).remove("member_avatar_" + member).apply()
+                            if (selected == member) selected = members.firstOrNull() ?: ""
                             editingMember = null
+                            editingMemberNameActive = false
                         }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
