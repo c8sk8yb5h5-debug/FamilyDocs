@@ -209,6 +209,10 @@ private fun FamilyHome() {
     var members by remember { mutableStateOf(readMembers(prefs)) }
     var selected by remember { mutableStateOf(members.firstOrNull() ?: "Juliet") }
     var categories by remember { mutableStateOf(readCategories(prefs)) }
+    var categoryOwners by remember { mutableStateOf(runCatching {
+        val json = JSONObject(prefs.getString("category_owners", "{}") ?: "{}")
+        buildMap { val keys = json.keys(); while (keys.hasNext()) { val key = keys.next(); put(key, json.optString(key)) } }
+    }.getOrDefault(emptyMap())) }
     var expanded by remember { mutableStateOf<String?>(null) }
     var importCategory by remember { mutableStateOf(categories.first()) }
     var importSide by remember { mutableStateOf("front") }
@@ -293,13 +297,8 @@ private fun FamilyHome() {
                 val stackStepPx = with(LocalDensity.current) { stackStep.toPx() }
                 val defaultCategories = setOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents", "身份证件", "银行卡", "家庭资料", "其他证件")
                 val visibleCategories = categories.filter { category ->
-                    docs.any { it.owner == selected && matchesCategory(it.category, category) } || category !in defaultCategories
-                }.let { visible ->
-                    // Show custom categories only for their selected owner when they have no documents.
-                    visible.filter { category ->
-                        docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
-                            category !in defaultCategories && docs.none { it.owner == selected && matchesCategory(it.category, category) }
-                    }
+                    docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
+                        (category !in defaultCategories && categoryOwners[category] == selected)
                 }
                 // Keep the category order stable; selection changes the stack geometry, not the list order.
                 val ordered = visibleCategories.reversed()
@@ -435,7 +434,19 @@ private fun FamilyHome() {
         dismissButton = { TextButton(onClick = { addMember = false }) { Text("取消") } })
     if (addFolder) AlertDialog(onDismissRequest = { addFolder = false }, title = { Text("新增证件卡片") },
         text = { OutlinedTextField(folderText, { folderText = it }, label = { Text("文件夹名称") }, singleLine = true) },
-        confirmButton = { TextButton(onClick = { val n = folderText.trim(); if (n.isNotEmpty() && n !in categories) { categories = categories + n; prefs.edit().putString("categories", JSONArray(categories).toString()).apply(); expanded = n }; addFolder = false }) { Text("创建") } },
+        confirmButton = { TextButton(onClick = {
+            val n = folderText.trim()
+            if (n.isNotEmpty() && n !in categories) {
+                categories = categories + n
+                categoryOwners = categoryOwners + (n to selected)
+                prefs.edit()
+                    .putString("categories", JSONArray(categories).toString())
+                    .putString("category_owners", JSONObject(categoryOwners).toString())
+                    .apply()
+                expanded = n
+            }
+            addFolder = false
+        }) { Text("创建") } },
         dismissButton = { TextButton(onClick = { addFolder = false }) { Text("Cancel") } })
     if (showSettings) AlertDialog(
         onDismissRequest = { showSettings = false },
