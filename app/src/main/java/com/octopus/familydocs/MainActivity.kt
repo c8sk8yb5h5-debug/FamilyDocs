@@ -440,10 +440,18 @@ private fun WalletCategoryCard(
             .background(Brush.linearGradient(gradient))
             .clickable(interactionSource = source, indication = null, onClick = onClick)
             .pointerInput(isExpanded, flipped) {
-                if (isExpanded) detectHorizontalDragGestures(onHorizontalDrag = { change, dragAmount ->
-                    change.consume()
-                    if (dragAmount.absoluteValue > 12f) flipped = dragAmount < 0f
-                })
+                if (isExpanded) {
+                    var horizontalDistance = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            if (horizontalDistance.absoluteValue > 48f) flipped = horizontalDistance < 0f
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            horizontalDistance += dragAmount
+                        }
+                    )
+                }
             }
     ) {
         if (bitmap != null) {
