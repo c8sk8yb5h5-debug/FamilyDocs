@@ -354,7 +354,7 @@ private fun FamilyHome() {
                             documents = categoryDocs,
                             height = cardHeight,
                             isExpanded = expanded == category,
-                            onImportBack = { importCategory = category; importSide = "back"; importer.launch(arrayOf("image/*")) },
+                            onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(arrayOf("image/*")) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(cardHeight)
@@ -440,6 +440,7 @@ private fun FamilyHome() {
         AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
             text = { Text("将删除此卡片以及 FamilyDocs 在应用内部保存的证件副本；不会删除手机相册中的原始照片。此操作不可撤销。") },
             confirmButton = { TextButton(onClick = {
+                flipResetToken++
                 val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                 removed.forEach { File(it.path).delete() }
                 docs = docs.filterNot { it in removed }
