@@ -53,7 +53,7 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.FAMILYDOCS_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.FAMILYDOCS_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.FAMILYDOCS_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.FAMILYDOCS_KEY_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.FAMILYDOCS_KEYSTORE_PASSWORD }}
         run: |
           test -n "$KEYSTORE_BASE64" || (echo "Missing FAMILYDOCS_KEYSTORE_BASE64 secret" && exit 1)
           mkdir -p "$RUNNER_TEMP/familydocs-signing"
