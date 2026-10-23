@@ -124,9 +124,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
         window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
+        restorePendingSharedImages()
         collectSharedImages(intent)
         File(filesDir, "updates/drag-test-image.jpg").delete()
-        setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome(sharedImageUris) { consumed -> sharedImageUris.removeAll(consumed.toSet()) } } }
+        setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome(sharedImageUris) { consumed -> removePendingSharedImages(consumed) } } }
         checkForUpdates(showUpToDate = false)
     }
 
@@ -136,17 +137,74 @@ class MainActivity : ComponentActivity() {
         collectSharedImages(intent)
     }
 
+    private fun restorePendingSharedImages() {
+        val saved = runCatching {
+            val array = org.json.JSONArray(getSharedPreferences("familydocs", Context.MODE_PRIVATE).getString("pending_shared_images", "[]"))
+            (0 until array.length()).mapNotNull { index ->
+                Uri.parse(array.optString(index)).takeIf { uri ->
+                    uri.authority == "$packageName.fileprovider" &&
+                        File(filesDir, "pending-shares/" + uri.lastPathSegment.orEmpty()).exists()
+                }
+            }
+        }.getOrDefault(emptyList())
+        sharedImageUris.addAll(saved)
+    }
+
+    private fun persistPendingSharedImages() {
+        val json = org.json.JSONArray()
+        sharedImageUris.forEach { json.put(it.toString()) }
+        getSharedPreferences("familydocs", Context.MODE_PRIVATE).edit()
+            .putString("pending_shared_images", json.toString()).apply()
+    }
+
+    private fun removePendingSharedImages(uris: List<Uri>) {
+        sharedImageUris.removeAll(uris.toSet())
+        uris.forEach { uri ->
+            if (uri.authority == "$packageName.fileprovider") {
+                runCatching { File(filesDir, "pending-shares/" + uri.lastPathSegment.orEmpty()).delete() }
+            }
+        }
+        persistPendingSharedImages()
+    }
+
     @Suppress("DEPRECATION")
     private fun collectSharedImages(incoming: Intent?) {
         if (incoming == null || (incoming.action != Intent.ACTION_SEND && incoming.action != Intent.ACTION_SEND_MULTIPLE)) return
         val received = linkedSetOf<Uri>()
         incoming.data?.let(received::add)
         incoming.clipData?.let { clip ->
-            for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(received::add)
+            for (i in 0 until clip.itemCount) clip.itemAt(i).uri?.let(received::add)
         }
         runCatching { incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let(received::add)
         runCatching { incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let { received.addAll(it) }
-        sharedImageUris.addAll(received.filter { it !in sharedImageUris })
+        val incomingUris = received.toList()
+        if (incomingUris.isEmpty()) return
+        Thread {
+            val dir = File(filesDir, "pending-shares").apply { mkdirs() }
+            val copied = incomingUris.mapIndexedNotNull { index, uri ->
+                runCatching {
+                    val extension = when (contentResolver.getType(uri)?.lowercase()) {
+                        "image/png" -> "png"
+                        "image/webp" -> "webp"
+                        "image/heic" -> "heic"
+                        "image/heif" -> "heif"
+                        "image/gif" -> "gif"
+                        else -> "jpg"
+                    }
+                    val target = File(dir, "${System.currentTimeMillis()}_${index}_${kotlin.random.Random.nextInt(1000, 9999)}.${extension}")
+                    contentResolver.openInputStream(uri)?.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+                        ?: return@mapIndexedNotNull null
+                    FileProvider.getUriForFile(this, "$packageName.fileprovider", target)
+                }.getOrNull()
+            }
+            runOnUiThread {
+                sharedImageUris.addAll(copied.filter { it !in sharedImageUris })
+                persistPendingSharedImages()
+                if (copied.size < incomingUris.size) {
+                    Toast.makeText(this, "部分图片导入失败", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
     }
 
     fun checkForUpdates(showUpToDate: Boolean) {
@@ -368,15 +426,54 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             Spacer(Modifier.height(8.dp))
             Surface(color = HeaderBg, shape = RoundedCornerShape(42.dp), modifier = Modifier.fillMaxWidth()) {
                 Row(Modifier.height(76.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Surface(color = Color.Black, shape = CircleShape, modifier = Modifier.size(42.dp).clickable {
-                            flipResetToken++
-                            val newCategory = "card_" + System.currentTimeMillis()
-                            categories = categories + newCategory
-                            categoryOwners = categoryOwners + (newCategory to selected)
-                            prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
-                            expanded = newCategory
-                        }) {
-                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "新增证件卡片", tint = Color.White, modifier = Modifier.size(28.dp)) }
+                    var removeDropTargeted by remember { mutableStateOf(false) }
+                    val currentSharedImages by rememberUpdatedState(sharedImageUris)
+                    val currentRemoveHandler by rememberUpdatedState(onSharedImagesConsumed)
+                    Surface(
+                        color = if (removeDropTargeted) Color(0xFFB94A52) else Color.Black,
+                        shape = CircleShape,
+                        modifier = Modifier.size(42.dp)
+                            .dragAndDropTarget(
+                                shouldStartDragAndDrop = { event ->
+                                    runCatching {
+                                        val clip = event.toAndroidDragEvent().clipData
+                                        clip != null && (0 until clip.itemCount).any { clip.getItemAt(it).uri != null }
+                                    }.getOrDefault(false)
+                                },
+                                target = remember {
+                                    object : DragAndDropTarget {
+                                        override fun onStarted(event: DragAndDropEvent) {}
+                                        override fun onEntered(event: DragAndDropEvent) { removeDropTargeted = true }
+                                        override fun onMoved(event: DragAndDropEvent) { removeDropTargeted = true }
+                                        override fun onExited(event: DragAndDropEvent) { removeDropTargeted = false }
+                                        override fun onEnded(event: DragAndDropEvent) { removeDropTargeted = false }
+                                        override fun onDrop(event: DragAndDropEvent): Boolean {
+                                            removeDropTargeted = false
+                                            val clip = event.toAndroidDragEvent().clipData ?: return false
+                                            val dragged = (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri }.toSet()
+                                            val queued = currentSharedImages.filter { it in dragged }
+                                            if (queued.isEmpty()) return false
+                                            currentRemoveHandler(queued)
+                                            return true
+                                        }
+                                    }
+                                }
+                            )
+                            .clickable {
+                                if (removeDropTargeted) return@clickable
+                                flipResetToken++
+                                val newCategory = "card_" + System.currentTimeMillis()
+                                categories = categories + newCategory
+                                categoryOwners = categoryOwners + (newCategory to selected)
+                                prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                                expanded = newCategory
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(if (removeDropTargeted) Icons.Filled.Remove else Icons.Filled.Add,
+                                if (removeDropTargeted) "删除待处理图片" else "新增证件卡片",
+                                tint = Color.White, modifier = Modifier.size(28.dp))
+                        }
                     }
                     if (sharedImageUris.isNotEmpty()) {
                         Row(
@@ -554,8 +651,14 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             isExpanded = expanded == category,
                             onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDropUris = { uris, side ->
+                                val oldSide = docs.filter { it.owner == selected && matchesCategory(it.category, category) && it.side == side }
                                 val added = uris.mapNotNull { importFile(context, it, category, selected, side) }
-                                if (added.isNotEmpty()) { docs = docs + added; writeDocs(prefs, docs); onSharedImagesConsumed(uris) }
+                                if (added.isNotEmpty()) {
+                                    oldSide.forEach { runCatching { File(it.path).delete() } }
+                                    docs = docs.filterNot { it in oldSide } + added
+                                    writeDocs(prefs, docs)
+                                    onSharedImagesConsumed(uris)
+                                }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -779,26 +882,76 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             }
         }
     }
+    var viewingPhoto by remember { mutableStateOf<Doc?>(null) }
     if (editingCategory != null) {
         val category = editingCategory!!
         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
         val imageExts = setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
         val frontPhoto = categoryDocs.firstOrNull { it.side == "front" && File(it.path).extension.lowercase() in imageExts }
         val backPhoto = categoryDocs.firstOrNull { it.side == "back" && File(it.path).extension.lowercase() in imageExts }
-        AlertDialog(onDismissRequest = { editingCategory = null }, title = { Text("编辑证件卡片") },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "front"; replaceImportedSide = true; editingCategory = null; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("正面照片") }
-                    OutlinedButton(onClick = { flipResetToken++; importCategory = category; importSide = "back"; replaceImportedSide = true; editingCategory = null; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }, modifier = Modifier.weight(1f)) { Text("反面照片") }
+        AlertDialog(onDismissRequest = { editingCategory = null }, title = null,
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(frontPhoto, backPhoto).forEachIndexed { index, photo ->
+                            val side = if (index == 0) "front" else "back"
+                            val thumbnail by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, photo?.path) {
+                                value = photo?.let { item -> withContext(Dispatchers.IO) { decodeImageBitmap(item.path, 320) } }
+                            }
+                            val loadedThumbnail = thumbnail
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFF38383D),
+                                modifier = Modifier.weight(1f).height(104.dp).clickable {
+                                    if (photo != null) viewingPhoto = photo
+                                    else {
+                                        flipResetToken++
+                                        importCategory = category
+                                        importSide = side
+                                        replaceImportedSide = true
+                                        editingCategory = null
+                                        importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    }
+                                }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    if (loadedThumbnail != null) {
+                                        Image(loadedThumbnail, contentDescription = if (side == "front") "正面照片" else "反面照片",
+                                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                                    } else {
+                                        Icon(Icons.Filled.Add, if (side == "front") "添加正面照片" else "添加反面照片",
+                                            tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(28.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
+                        OutlinedButton(onClick = { backPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "反面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = backPhoto != null, modifier = Modifier.weight(1f)) { Text("导出反面") }
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { frontPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "正面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = frontPhoto != null, modifier = Modifier.weight(1f)) { Text("导出正面") }
-                    OutlinedButton(onClick = { backPhoto?.let { file -> exportOrRequestGallery(context, File(file.path), { pendingGalleryExport = it }, { galleryPermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE) }) { ok -> Toast.makeText(context, if (ok) "反面照片已导出" else "导出失败", Toast.LENGTH_LONG).show() } } }, enabled = backPhoto != null, modifier = Modifier.weight(1f)) { Text("导出反面") }
-                }
-            } },
-            confirmButton = { TextButton(onClick = { editingCategory = null }) { Text("完成") } },
+            },
+            confirmButton = {},
             dismissButton = { TextButton(onClick = { flipResetToken++; confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) } }
         )
+    }
+
+    if (viewingPhoto != null) {
+        val photo = viewingPhoto!!
+        val fullBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, photo.path) {
+            value = withContext(Dispatchers.IO) { decodeImageBitmap(photo.path, 2600) }
+        }
+        val loadedFullBitmap = fullBitmap
+        Dialog(onDismissRequest = { viewingPhoto = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { viewingPhoto = null }, contentAlignment = Alignment.Center) {
+                if (loadedFullBitmap != null) {
+                    Image(loadedFullBitmap, contentDescription = "查看原图",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f))
+                }
+            }
+        }
     }
 
     if (confirmDeleteCategory != null) {
