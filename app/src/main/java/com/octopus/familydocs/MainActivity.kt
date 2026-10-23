@@ -80,6 +80,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -384,12 +386,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         ) {
                             sharedImageUris.forEach { sharedUri ->
                                 key(sharedUri) {
-                                    val preview = remember(sharedUri) {
-                                        runCatching {
-                                            context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it) }
-                                        }.getOrNull()
+                                    val preview by produceState<Bitmap?>(initialValue = null, sharedUri) {
+                                        value = withContext(Dispatchers.IO) { decodeUriBitmap(context, sharedUri, 256) }
                                     }
-                                    if (preview != null) {
+                                    val previewBitmap = preview
+                                    if (previewBitmap != null) {
                                         AndroidView(
                                             factory = { viewContext ->
                                                 ImageView(viewContext).apply {
@@ -399,7 +400,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                         setColor(android.graphics.Color.DKGRAY)
                                                     }
                                                     clipToOutline = true
-                                                    setImageBitmap(preview)
+                                                    setImageBitmap(previewBitmap)
                                                     setOnLongClickListener { view ->
                                                         runCatching {
                                                             val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
@@ -408,7 +409,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     }
                                                 }
                                             },
-                                            update = { it.setImageBitmap(preview) },
+                                            update = { it.setImageBitmap(previewBitmap) },
                                             modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
                                         )
                                     }
@@ -476,7 +477,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
-                        val avatarBitmap = remember(member, avatarPath, avatarRefresh) { avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() } }
+                        val avatarBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, member, avatarPath, avatarRefresh) {
+                            value = avatarPath?.let { path ->
+                                withContext(Dispatchers.IO) { decodeImageBitmap(path, 256) }
+                            }
+                        }
                         val savedAvatarScale = prefs.getFloat("member_avatar_scale_" + member, 1f)
                         val savedAvatarX = prefs.getFloat("member_avatar_x_" + member, 0f)
                         val savedAvatarY = prefs.getFloat("member_avatar_y_" + member, 0f)
@@ -606,8 +611,10 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             label = "member-capsule-jelly"
         )
         val avatarPath = prefs.getString("member_avatar_" + member, null)
-        val avatarBitmap = remember(member, avatarPath, avatarRefresh) {
-            avatarPath?.let { runCatching { BitmapFactory.decodeFile(it)?.asImageBitmap() }.getOrNull() }
+        val avatarBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, member, avatarPath, avatarRefresh) {
+            value = avatarPath?.let { path ->
+                withContext(Dispatchers.IO) { decodeImageBitmap(path, 512) }
+            }
         }
         LaunchedEffect(member) { dialogEntered = true }
         Dialog(onDismissRequest = { editingMember = null }) {
@@ -966,8 +973,10 @@ private fun WalletCategoryCard(
         val ext = File(doc.path).extension.lowercase()
         (doc.side == (if (flipped) "back" else "front")) && ext in setOf("jpg", "jpeg", "png", "webp", "bmp", "heic", "heif")
     }
-    val bitmap = remember(firstImage?.path) {
-        firstImage?.let { runCatching { BitmapFactory.decodeFile(it.path)?.asImageBitmap() }.getOrNull() }
+    val bitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, firstImage?.path) {
+        value = firstImage?.let { doc ->
+            withContext(Dispatchers.IO) { decodeImageBitmap(doc.path, 1400) }
+        }
     }
     val gradient = when (name.hashCode().absoluteValue % 5) {
         0 -> listOf(Color(0xFFE0F8FC), Color(0xFF9EDDE9), Color(0xFFB8EAF0))
@@ -1024,13 +1033,14 @@ private fun WalletCategoryCard(
                         blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                     )
                     // Clearly visible concentric security-print rings in alternating cool and warm hues.
-                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 12.dp.toPx() }
+                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 22.dp.toPx() }
                     val radiusStep = maxOf(spacing, 1f)
                     val ringPalette = listOf(
                         Color(0xBFFFFFFF), Color(0xA86CEDE8),
                         Color(0xA8B9A0FF), Color(0xA8FFC0E6),
                         Color(0xA8FFD68A)
                     )
+                    // Sparse multi-ring engraving keeps the holographic texture clear without thousands of draw calls per frame.
                     var row = -radiusStep
                     var rowIndex = 0
                     while (row < h + radiusStep) {
@@ -1039,20 +1049,20 @@ private fun WalletCategoryCard(
                         while (col < w + radiusStep) {
                             val cx = col + if (rowIndex % 2 == 0) radiusStep * 0.55f else 0f
                             val cy = row
-                            for (ring in 1..4) {
+                            for (ring in 1..3) {
                                 drawCircle(
                                     color = ringPalette[(ring + rowIndex + colIndex) % ringPalette.size]
-                                        .copy(alpha = (0.24f + ring * 0.085f) * progress * intensity),
-                                    radius = radiusStep * ring * 0.39f,
+                                        .copy(alpha = (0.28f + ring * 0.09f) * progress * intensity),
+                                    radius = radiusStep * ring * 0.43f,
                                     center = Offset(cx, cy),
                                     style = Stroke(width = if (ring == 1) 1.15f else 0.85f),
                                     blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                                 )
                             }
-                            col += radiusStep * 2.15f
+                            col += radiusStep * 3.0f
                             colIndex++
                         }
-                        row += radiusStep * 1.78f
+                        row += radiusStep * 2.45f
                         rowIndex++
                     }
                     // Bright leading edge, like a real film being pressed from one side to the other.
@@ -1156,6 +1166,30 @@ private fun WalletCategoryCard(
             }
         }
     }
+}
+
+private fun decodeImageBitmap(path: String, maxDimension: Int): androidx.compose.ui.graphics.ImageBitmap? {
+    return runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxDimension && bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
+        BitmapFactory.decodeFile(path, options)?.asImageBitmap()
+    }.getOrNull()
+}
+
+private fun decodeUriBitmap(context: Context, uri: Uri, maxDimension: Int): Bitmap? {
+    return runCatching {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxDimension && bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+    }.getOrNull()
 }
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
