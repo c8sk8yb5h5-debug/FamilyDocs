@@ -984,61 +984,90 @@ private fun WalletCategoryCard(
                 if (progress > 0.001f) {
                     val w = size.width
                     val h = size.height
-                    // Soft pearlescent base: platinum silver shifting through lilac, aqua and rose.
+                    val intensity = if (isFoilApplying) 1f else 0.92f
+                    // High-contrast cold-to-warm holographic spectrum.
                     drawRect(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color(0x18FFFFFF), Color(0x42E4E0F4),
-                                Color(0x385DE9D8), Color(0x32B8C8F4),
-                                Color(0x35E9A9D4), Color(0x16FFFFFF)
+                                Color(0xB84DE7E8), Color(0xA84D8CFF),
+                                Color(0xB69D65F5), Color(0xB8F07BD4),
+                                Color(0xB8FFB85C), Color(0xA8F8F1C9),
+                                Color(0xA84DE7E8)
                             ),
-                            start = Offset(0f, 0f),
-                            end = Offset(w, h)
+                            start = Offset(-w * 0.2f, h * 0.1f),
+                            end = Offset(w * 1.1f, h * 0.95f)
                         ),
-                        alpha = if (isFoilApplying) 0.82f else 0.62f
+                        alpha = progress * intensity,
+                        blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                     )
-                    // Moving specular band makes the film feel like it is being laid onto the card.
-                    val sweepX = w * (progress * 1.9f - 0.65f)
+                    // Saturated pearlescent color bands shift across the surface as the film settles.
+                    val sweepX = w * (progress * 1.75f - 0.38f)
                     drawRect(
                         brush = Brush.linearGradient(
                             colors = listOf(
-                                Color.Transparent, Color(0x18FFFFFF),
-                                Color(0xA8FFFFFF), Color(0x88D9F8F3),
-                                Color(0x50C6B9F0), Color.Transparent
+                                Color.Transparent,
+                                Color(0x4076F7F2),
+                                Color(0xC8FFFFFF),
+                                Color(0xA8B6F7FF),
+                                Color(0x889A73FF),
+                                Color(0x80FFB4D8),
+                                Color(0x90FFD27A),
+                                Color.Transparent
                             ),
-                            start = Offset(sweepX - w * 0.32f, 0f),
-                            end = Offset(sweepX + w * 0.32f, h)
+                            start = Offset(sweepX - w * 0.46f, 0f),
+                            end = Offset(sweepX + w * 0.46f, h)
                         ),
-                        alpha = if (isFoilApplying) 0.92f else 0.68f
+                        alpha = (0.72f + 0.28f * progress) * intensity,
+                        blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                     )
-                    // Fine concentric engraving similar to holographic security foil.
-                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 17.dp.toPx() }
-                    val ringColor = Color(0x30FFFFFF)
+                    // Clearly visible concentric security-print rings in alternating cool and warm hues.
+                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 12.dp.toPx() }
                     val radiusStep = maxOf(spacing, 1f)
+                    val ringPalette = listOf(
+                        Color(0xBFFFFFFF), Color(0xA86CEDE8),
+                        Color(0xA8B9A0FF), Color(0xA8FFC0E6),
+                        Color(0xA8FFD68A)
+                    )
                     var row = -radiusStep
+                    var rowIndex = 0
                     while (row < h + radiusStep) {
                         var col = -radiusStep
+                        var colIndex = 0
                         while (col < w + radiusStep) {
-                            val cx = col + if ((row / radiusStep).toInt() % 2 == 0) radiusStep * 0.5f else 0f
+                            val cx = col + if (rowIndex % 2 == 0) radiusStep * 0.55f else 0f
                             val cy = row
-                            for (ring in 1..3) {
+                            for (ring in 1..4) {
                                 drawCircle(
-                                    color = ringColor.copy(alpha = (0.13f + ring * 0.035f) * progress),
-                                    radius = radiusStep * ring * 0.43f,
+                                    color = ringPalette[(ring + rowIndex + colIndex) % ringPalette.size]
+                                        .copy(alpha = (0.24f + ring * 0.085f) * progress * intensity),
+                                    radius = radiusStep * ring * 0.39f,
                                     center = Offset(cx, cy),
-                                    style = Stroke(width = 0.7f)
+                                    style = Stroke(width = if (ring == 1) 1.15f else 0.85f),
+                                    blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                                 )
                             }
-                            col += radiusStep * 2.2f
+                            col += radiusStep * 2.15f
+                            colIndex++
                         }
-                        row += radiusStep * 1.9f
+                        row += radiusStep * 1.78f
+                        rowIndex++
                     }
-                    // Thin travelling highlight along the leading edge of the coating.
-                    val edgeX = w * (progress * 1.65f - 0.25f)
+                    // Bright leading edge, like a real film being pressed from one side to the other.
+                    val edgeX = w * (progress * 1.7f - 0.28f)
                     drawRect(
-                        color = Color.White.copy(alpha = (if (isFoilApplying) 0.72f else 0.4f) * progress),
-                        topLeft = Offset(edgeX - 1.2f, 0f),
-                        size = androidx.compose.ui.geometry.Size(2.4f, h)
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xA8A7FFF7),
+                                Color.White,
+                                Color(0xB8FFD7F4),
+                                Color.Transparent
+                            ),
+                            startX = edgeX - w * 0.075f,
+                            endX = edgeX + w * 0.075f
+                        ),
+                        alpha = (0.5f + 0.5f * progress) * intensity,
+                        blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                     )
                 }
             }
