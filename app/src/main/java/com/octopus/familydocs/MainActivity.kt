@@ -929,8 +929,15 @@ private fun WalletCategoryCard(
     )
     val cardShape = RoundedCornerShape(20.dp)
     var isDropTargeted by remember { mutableStateOf(false) }
-    val dropScale by animateFloatAsState(if (isDropTargeted) 1.025f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-drop-scale")
-    val dropBorderColor by androidx.compose.animation.animateColorAsState(if (isDropTargeted) Color(0xFF9EF0DE) else Color.Transparent, animationSpec = spring(stiffness = Spring.StiffnessMedium), label = "card-drop-border")
+    var isFoilApplying by remember { mutableStateOf(false) }
+    val foilProgress = androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isDropTargeted || isFoilApplying) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = if (isFoilApplying) 1100 else 650,
+            easing = androidx.compose.animation.core.FastOutSlowInEasing
+        ),
+        label = "platinum-foil-coating"
+    )
     val currentDropHandler by rememberUpdatedState(onDropUris)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val currentFlipped by rememberUpdatedState(flipped)
@@ -951,10 +958,73 @@ private fun WalletCategoryCard(
     }
     Box(
         modifier
-            .scale(scale * dropScale)
-            .shadow(elevation = if (isDropTargeted) 28.dp else 18.dp, shape = cardShape, clip = false)
+            .scale(scale)
+            .shadow(elevation = if (isDropTargeted || isFoilApplying) 24.dp else 18.dp, shape = cardShape, clip = false)
             .clip(cardShape)
-            .then(Modifier.border(if (isDropTargeted) 3.dp else 0.dp, dropBorderColor, cardShape))
+            .drawWithContent {
+                drawContent()
+                val progress = foilProgress.value
+                if (progress > 0.001f) {
+                    val w = size.width
+                    val h = size.height
+                    // Soft pearlescent base: platinum silver shifting through lilac, aqua and rose.
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color(0x18FFFFFF), Color(0x42E4E0F4),
+                                Color(0x385DE9D8), Color(0x32B8C8F4),
+                                Color(0x35E9A9D4), Color(0x16FFFFFF)
+                            ),
+                            start = Offset(0f, 0f),
+                            end = Offset(w, h)
+                        ),
+                        alpha = if (isFoilApplying) 0.82f else 0.62f
+                    )
+                    // Moving specular band makes the film feel like it is being laid onto the card.
+                    val sweepX = w * (progress * 1.9f - 0.65f)
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent, Color(0x18FFFFFF),
+                                Color(0xA8FFFFFF), Color(0x88D9F8F3),
+                                Color(0x50C6B9F0), Color.Transparent
+                            ),
+                            start = Offset(sweepX - w * 0.32f, 0f),
+                            end = Offset(sweepX + w * 0.32f, h)
+                        ),
+                        alpha = if (isFoilApplying) 0.92f else 0.68f
+                    )
+                    // Fine concentric engraving similar to holographic security foil.
+                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 17.dp.toPx() }
+                    val ringColor = Color(0x30FFFFFF)
+                    val radiusStep = maxOf(spacing, 1f)
+                    var row = -radiusStep
+                    while (row < h + radiusStep) {
+                        var col = -radiusStep
+                        while (col < w + radiusStep) {
+                            val cx = col + if ((row / radiusStep).toInt() % 2 == 0) radiusStep * 0.5f else 0f
+                            val cy = row
+                            for (ring in 1..3) {
+                                drawCircle(
+                                    color = ringColor.copy(alpha = (0.13f + ring * 0.035f) * progress),
+                                    radius = radiusStep * ring * 0.43f,
+                                    center = Offset(cx, cy),
+                                    style = Stroke(width = 0.7f)
+                                )
+                            }
+                            col += radiusStep * 2.2f
+                        }
+                        row += radiusStep * 1.9f
+                    }
+                    // Thin travelling highlight along the leading edge of the coating.
+                    val edgeX = w * (progress * 1.65f - 0.25f)
+                    drawRect(
+                        color = Color.White.copy(alpha = (if (isFoilApplying) 0.72f else 0.4f) * progress),
+                        topLeft = Offset(edgeX - 1.2f, 0f),
+                        size = androidx.compose.ui.geometry.Size(2.4f, h)
+                    )
+                }
+            }
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
                     runCatching {
@@ -981,6 +1051,7 @@ private fun WalletCategoryCard(
                         override fun onEnded(event: DragAndDropEvent) { isDropTargeted = false }
                         override fun onDrop(event: DragAndDropEvent): Boolean {
                             isDropTargeted = false
+                            isFoilApplying = true
                             val androidEvent = event.toAndroidDragEvent()
                             val permission = runCatching {
                                 (context as? Activity)?.requestDragAndDropPermissions(androidEvent)
@@ -994,6 +1065,10 @@ private fun WalletCategoryCard(
                                 }.distinct()
                                 if (uris.isEmpty()) false else {
                                     currentDropHandler(uris, if (isExpanded && currentFlipped) "back" else "front")
+                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                                        kotlinx.coroutines.delay(1250)
+                                        isFoilApplying = false
+                                    }
                                     true
                                 }
                             } catch (_: Exception) {
