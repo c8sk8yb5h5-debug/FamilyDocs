@@ -173,7 +173,7 @@ class MainActivity : ComponentActivity() {
         val received = linkedSetOf<Uri>()
         incoming.data?.let(received::add)
         incoming.clipData?.let { clip ->
-            for (i in 0 until clip.itemCount) clip.itemAt(i).uri?.let(received::add)
+            for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(received::add)
         }
         runCatching { incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let(received::add)
         runCatching { incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let { received.addAll(it) }
