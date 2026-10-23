@@ -885,7 +885,9 @@ private fun FamilyHome() {
     )
 }
 
-@OptIn(Expeprivate fun WalletCategoryCard(
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun WalletCategoryCard(
     name: String,
     count: Int,
     icon: ImageVector,
@@ -1011,12 +1013,6 @@ private fun FamilyHome() {
                 Icon(Icons.Filled.Add, contentDescription = if (flipped) "添加卡片背面照片" else "导入证件照片",
                     tint = Ink.copy(alpha = .72f), modifier = Modifier.align(Alignment.Center).size(92.dp)
                         .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
-            }
-        }
-    }
-}
-
-ort() })
             }
         }
     }
