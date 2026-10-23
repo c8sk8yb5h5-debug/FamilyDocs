@@ -123,6 +123,7 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
         window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
         collectSharedImages(intent)
+        File(filesDir, "updates/drag-test-image.jpg").delete()
         setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome(sharedImageUris) { consumed -> sharedImageUris.removeAll(consumed.toSet()) } } }
         checkForUpdates(showUpToDate = false)
     }
@@ -133,6 +134,7 @@ class MainActivity : ComponentActivity() {
         collectSharedImages(intent)
     }
 
+    @Suppress("DEPRECATION")
     private fun collectSharedImages(incoming: Intent?) {
         if (incoming == null || (incoming.action != Intent.ACTION_SEND && incoming.action != Intent.ACTION_SEND_MULTIPLE)) return
         val received = linkedSetOf<Uri>()
@@ -140,8 +142,8 @@ class MainActivity : ComponentActivity() {
         incoming.clipData?.let { clip ->
             for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(received::add)
         }
-        runCatching { @Suppress("DEPRECATION") (incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)) }.getOrNull()?.let(received::add)
-        runCatching { @Suppress("DEPRECATION") incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let { received.addAll(it) }
+        runCatching { incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let(received::add)
+        runCatching { incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let { received.addAll(it) }
         sharedImageUris.addAll(received.filter { it !in sharedImageUris })
     }
 
