@@ -50,6 +50,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -884,9 +885,7 @@ private fun FamilyHome() {
     )
 }
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun WalletCategoryCard(
+@OptIn(Expeprivate fun WalletCategoryCard(
     name: String,
     count: Int,
     icon: ImageVector,
@@ -911,6 +910,9 @@ private fun WalletCategoryCard(
         label = "wallet-card-scale"
     )
     val cardShape = RoundedCornerShape(20.dp)
+    var isDropTargeted by remember { mutableStateOf(false) }
+    val dropScale by animateFloatAsState(if (isDropTargeted) 1.025f else 1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-drop-scale")
+    val dropBorderColor by androidx.compose.animation.animateColorAsState(if (isDropTargeted) Color(0xFF9EF0DE) else Color.Transparent, animationSpec = spring(stiffness = Spring.StiffnessMedium), label = "card-drop-border")
     val currentDropHandler by rememberUpdatedState(onDropUris)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val currentFlipped by rememberUpdatedState(flipped)
@@ -931,9 +933,10 @@ private fun WalletCategoryCard(
     }
     Box(
         modifier
-            .scale(scale)
-            .shadow(elevation = 18.dp, shape = cardShape, clip = false)
+            .scale(scale * dropScale)
+            .shadow(elevation = if (isDropTargeted) 28.dp else 18.dp, shape = cardShape, clip = false)
             .clip(cardShape)
+            .then(Modifier.border(if (isDropTargeted) 3.dp else 0.dp, dropBorderColor, cardShape))
             .dragAndDropTarget(
                 shouldStartDragAndDrop = { event ->
                     runCatching {
@@ -953,7 +956,13 @@ private fun WalletCategoryCard(
                 },
                 target = remember {
                     object : DragAndDropTarget {
+                        override fun onStarted(event: DragAndDropEvent) { isDropTargeted = false }
+                        override fun onEntered(event: DragAndDropEvent) { isDropTargeted = true }
+                        override fun onMoved(event: DragAndDropEvent) { isDropTargeted = true }
+                        override fun onExited(event: DragAndDropEvent) { isDropTargeted = false }
+                        override fun onEnded(event: DragAndDropEvent) { isDropTargeted = false }
                         override fun onDrop(event: DragAndDropEvent): Boolean {
+                            isDropTargeted = false
                             val androidEvent = event.toAndroidDragEvent()
                             val permission = runCatching {
                                 (context as? Activity)?.requestDragAndDropPermissions(androidEvent)
@@ -1002,6 +1011,12 @@ private fun WalletCategoryCard(
                 Icon(Icons.Filled.Add, contentDescription = if (flipped) "添加卡片背面照片" else "导入证件照片",
                     tint = Ink.copy(alpha = .72f), modifier = Modifier.align(Alignment.Center).size(92.dp)
                         .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
+            }
+        }
+    }
+}
+
+ort() })
             }
         }
     }
