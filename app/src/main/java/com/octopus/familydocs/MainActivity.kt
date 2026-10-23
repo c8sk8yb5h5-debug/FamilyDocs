@@ -1055,7 +1055,6 @@ private fun WalletCategoryCard(
                         override fun onEnded(event: DragAndDropEvent) { isDropTargeted = false }
                         override fun onDrop(event: DragAndDropEvent): Boolean {
                             isDropTargeted = false
-                            isFoilApplying = true
                             val androidEvent = event.toAndroidDragEvent()
                             val permission = runCatching {
                                 (context as? Activity)?.requestDragAndDropPermissions(androidEvent)
@@ -1068,6 +1067,7 @@ private fun WalletCategoryCard(
                                         ?: item.text?.toString()?.takeIf { it.startsWith("content://") }?.let(Uri::parse)
                                 }.distinct()
                                 if (uris.isEmpty()) false else {
+                                    isFoilApplying = true
                                     currentDropHandler(uris, if (isExpanded && currentFlipped) "back" else "front")
                                     foilScope.launch {
                                         delay(1250)
