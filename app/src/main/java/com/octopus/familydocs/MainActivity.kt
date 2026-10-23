@@ -376,7 +376,48 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         }) {
                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "新增证件卡片", tint = Color.White, modifier = Modifier.size(28.dp)) }
                     }
-                    Spacer(Modifier.weight(1f))
+                    if (sharedImageUris.isNotEmpty()) {
+                        Row(
+                            Modifier.weight(1f).padding(horizontal = 10.dp).horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            sharedImageUris.forEach { sharedUri ->
+                                key(sharedUri) {
+                                    val preview = remember(sharedUri) {
+                                        runCatching {
+                                            context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                                        }.getOrNull()
+                                    }
+                                    if (preview != null) {
+                                        AndroidView(
+                                            factory = { viewContext ->
+                                                ImageView(viewContext).apply {
+                                                    scaleType = ImageView.ScaleType.CENTER_CROP
+                                                    background = android.graphics.drawable.GradientDrawable().apply {
+                                                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                                                        setColor(android.graphics.Color.DKGRAY)
+                                                    }
+                                                    clipToOutline = true
+                                                    setImageBitmap(preview.asAndroidBitmap())
+                                                    setOnLongClickListener { view ->
+                                                        runCatching {
+                                                            val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
+                                                            view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
+                                                        }.getOrDefault(false)
+                                                    }
+                                                }
+                                            },
+                                            update = { it.setImageBitmap(preview.asAndroidBitmap()) },
+                                            modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
                     Icon(Icons.Filled.Settings, "设置", Modifier.size(28.dp).clickable { flipResetToken++; showSettings = true }, tint = Color.White)
                 }
             }
@@ -465,34 +506,6 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 }
             }
             Spacer(Modifier.height(12.dp))
-            if (sharedImageUris.isNotEmpty()) {
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(76.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    sharedImageUris.forEach { sharedUri ->
-                        key(sharedUri) {
-                            val preview = remember(sharedUri) { runCatching { context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it) } }.getOrNull() }
-                            if (preview != null) {
-                                AndroidView(
-                                    factory = { viewContext -> ImageView(viewContext).apply {
-                                        scaleType = ImageView.ScaleType.CENTER_CROP
-                                        clipToOutline = true
-                                        background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 14f * resources.displayMetrics.density; setColor(android.graphics.Color.DKGRAY) }
-                                        setImageBitmap(preview)
-                                        setOnLongClickListener { view ->
-                                            runCatching {
-                                                val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
-                                                view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
-                                            }.getOrDefault(false)
-                                        }
-                                    } },
-                                    update = { it.setImageBitmap(preview) },
-                                    modifier = Modifier.size(width = 76.dp, height = 68.dp).shadow(5.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp))
-                                )
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
             BoxWithConstraints(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = expanded == null).then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier).padding(bottom = 26.dp)
             ) {
