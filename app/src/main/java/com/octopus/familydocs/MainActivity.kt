@@ -1166,25 +1166,64 @@ private fun exportOrRequestGallery(context: Context, file: File, setPending: (Fi
 private fun exportImageToGallery(context: Context, source: File): Boolean {
     if (!source.exists() || source.length() == 0L) return false
     return runCatching {
-        val mime = when (source.extension.lowercase()) { "png" -> "image/png"; "webp" -> "image/webp"; else -> "image/jpeg" }
+        val now = System.currentTimeMillis()
+        val extension = source.extension.ifBlank { "jpg" }
+        val mime = when (extension.lowercase()) { "png" -> "image/png"; "webp" -> "image/webp"; else -> "image/jpeg" }
+        val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date(now))
+        val displayName = "FamilyDocs_$timestamp.$extension"
+        fun stampImageTime(file: File) {
+            // Preserve the image while resetting its capture time so gallery apps sort it as a fresh export.
+            runCatching {
+                android.media.ExifInterface(file.absolutePath).apply {
+                    val exifTime = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))
+                    setAttribute(android.media.ExifInterface.TAG_DATETIME, exifTime)
+                    setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, exifTime)
+                    setAttribute(android.media.ExifInterface.TAG_DATETIME_DIGITIZED, exifTime)
+                    saveAttributes()
+                }
+            }
+        }
         if (Build.VERSION.SDK_INT >= 29) {
             val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, "FamilyDocs_" + System.currentTimeMillis() + "." + source.extension.ifBlank { "jpg" })
+                put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
                 put(MediaStore.Images.Media.MIME_TYPE, mime)
                 put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/FamilyDocs")
+                put(MediaStore.Images.Media.DATE_TAKEN, now)
+                put(MediaStore.Images.Media.DATE_ADDED, now / 1000L)
+                put(MediaStore.Images.Media.DATE_MODIFIED, now / 1000L)
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
             try {
                 context.contentResolver.openOutputStream(uri)?.use { output -> source.inputStream().use { it.copyTo(output) } } ?: return false
-                values.clear(); values.put(MediaStore.Images.Media.IS_PENDING, 0)
+                // Update EXIF in the pending media item when the provider exposes a writable file descriptor.
+                runCatching {
+                    context.contentResolver.openFileDescriptor(uri, "rw")?.use { descriptor ->
+                        android.media.ExifInterface(descriptor.fileDescriptor).apply {
+                            val exifTime = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(now))
+                            setAttribute(android.media.ExifInterface.TAG_DATETIME, exifTime)
+                            setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, exifTime)
+                            setAttribute(android.media.ExifInterface.TAG_DATETIME_DIGITIZED, exifTime)
+                            saveAttributes()
+                        }
+                    }
+                }
+                values.clear()
+                values.put(MediaStore.Images.Media.DATE_TAKEN, now)
+                values.put(MediaStore.Images.Media.DATE_ADDED, now / 1000L)
+                values.put(MediaStore.Images.Media.DATE_MODIFIED, now / 1000L)
+                values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 context.contentResolver.update(uri, values, null, null)
                 true
-            } catch (e: Exception) { context.contentResolver.delete(uri, null, null); throw e }
+            } catch (e: Exception) {
+                context.contentResolver.delete(uri, null, null)
+                throw e
+            }
         } else {
             val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "FamilyDocs").apply { mkdirs() }
-            val target = File(dir, "FamilyDocs_" + System.currentTimeMillis() + "." + source.extension.ifBlank { "jpg" })
+            val target = File(dir, displayName)
             source.inputStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+            stampImageTime(target)
             MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(mime), null)
             true
         }
