@@ -562,7 +562,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     scaleX = lifting
                                     scaleY = lifting
                                 }
-                                .zIndex(if (liveDragOffset != 0f || expanded == category) ordered.size + 1f else index.toFloat()),
+                                // Earlier cards sit visually above the cards beneath them so their bottom-edge shadows remain visible.
+                                .zIndex(if (liveDragOffset != 0f || expanded == category) ordered.size + 2f else (ordered.size - index).toFloat()),
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onLongClick = { flipResetToken++; editingCategory = category },
