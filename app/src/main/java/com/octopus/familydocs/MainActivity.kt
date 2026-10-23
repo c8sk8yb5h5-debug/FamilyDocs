@@ -318,6 +318,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesConsumed: (List<Uri>) -> Unit = {}) {
     val context = LocalContext.current
