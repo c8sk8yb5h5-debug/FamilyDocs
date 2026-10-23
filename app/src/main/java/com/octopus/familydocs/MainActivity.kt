@@ -153,8 +153,9 @@ class MainActivity : ComponentActivity() {
     private fun persistPendingSharedImages() {
         val json = org.json.JSONArray()
         sharedImageUris.forEach { json.put(it.toString()) }
+        // Commit before the app can be backgrounded or replaced by an update.
         getSharedPreferences("familydocs", Context.MODE_PRIVATE).edit()
-            .putString("pending_shared_images", json.toString()).apply()
+            .putString("pending_shared_images", json.toString()).commit()
     }
 
     private fun removePendingSharedImages(uris: List<Uri>) {
