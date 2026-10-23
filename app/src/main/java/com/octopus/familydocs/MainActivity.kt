@@ -1,6 +1,7 @@
 package com.octopus.familydocs
 
 import android.content.Context
+import android.content.ClipData
 import android.content.ClipDescription
 import android.app.Activity
 import android.content.ContentValues
@@ -14,6 +15,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import android.widget.ImageView
+import android.view.View
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.core.content.FileProvider
 import android.net.Uri
 import android.os.Bundle
@@ -30,6 +37,7 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.toAndroidDragEvent
 import androidx.compose.ui.draganddrop.mimeTypes
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -435,7 +443,39 @@ private fun FamilyHome() {
                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
                 }
             }
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
+            Row(
+                Modifier.fillMaxWidth().height(76.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                val dragTestFile = remember { createDragTestImage(context) }
+                val dragTestBitmap = remember(dragTestFile.absolutePath) { BitmapFactory.decodeFile(dragTestFile.absolutePath) }
+                AndroidView(
+                    factory = { viewContext ->
+                        ImageView(viewContext).apply {
+                            scaleType = ImageView.ScaleType.CENTER_CROP
+                            setImageBitmap(dragTestBitmap)
+                            clipToOutline = true
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                cornerRadius = 18f * resources.displayMetrics.density
+                                setColor(android.graphics.Color.WHITE)
+                            }
+                            setOnLongClickListener { view ->
+                                runCatching {
+                                    val uri = FileProvider.getUriForFile(view.context, view.context.packageName + ".fileprovider", dragTestFile)
+                                    val clip = ClipData.newUri(view.context.contentResolver, "拖拽测试图片", uri)
+                                    view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
+                                }.isSuccess
+                            }
+                        }
+                    },
+                    update = { it.setImageBitmap(dragTestBitmap) },
+                    modifier = Modifier.size(68.dp).shadow(8.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))
+                )
+                Text("长按拖动此图到卡片", color = Color.LightGray, fontSize = 12.sp)
+            }
+            Spacer(Modifier.height(8.dp))
             BoxWithConstraints(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = expanded == null).then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier).padding(bottom = 26.dp)
             ) {
@@ -965,6 +1005,28 @@ private fun WalletCategoryCard(
             }
         }
     }
+}
+
+private fun createDragTestImage(context: Context): File {
+    val directory = File(context.filesDir, "updates").apply { mkdirs() }
+    val file = File(directory, "drag-test-image.jpg")
+    if (file.exists() && file.length() > 0L) return file
+    val bitmap = Bitmap.createBitmap(480, 480, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(android.graphics.Color.rgb(116, 190, 210))
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    paint.color = android.graphics.Color.rgb(250, 220, 130)
+    canvas.drawRoundRect(RectF(35f, 35f, 445f, 445f), 54f, 54f, paint)
+    paint.color = android.graphics.Color.rgb(70, 130, 150)
+    canvas.drawCircle(240f, 185f, 88f, paint)
+    paint.color = android.graphics.Color.WHITE
+    paint.textAlign = Paint.Align.CENTER
+    paint.textSize = 48f
+    paint.isFakeBoldText = true
+    canvas.drawText("TEST", 240f, 350f, paint)
+    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
+    bitmap.recycle()
+    return file
 }
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
