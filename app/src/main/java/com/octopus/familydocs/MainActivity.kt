@@ -116,12 +116,33 @@ private val Pastels = listOf(Color(0xFF9ADDE7), Color(0xFF9FE8D3), Color(0xFFFFE
 private data class Doc(val name: String, val path: String, val category: String, val owner: String, val side: String = "front")
 
 class MainActivity : ComponentActivity() {
+    private val sharedImageUris = mutableStateListOf<Uri>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
         window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
-        setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome() } }
+        collectSharedImages(intent)
+        setContent { MaterialTheme(colorScheme = darkColorScheme(background = ScreenBg, surface = HeaderBg)) { FamilyHome(sharedImageUris) { consumed -> sharedImageUris.removeAll(consumed.toSet()) } } }
         checkForUpdates(showUpToDate = false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        collectSharedImages(intent)
+    }
+
+    private fun collectSharedImages(incoming: Intent?) {
+        if (incoming == null || (incoming.action != Intent.ACTION_SEND && incoming.action != Intent.ACTION_SEND_MULTIPLE)) return
+        val received = linkedSetOf<Uri>()
+        incoming.data?.let(received::add)
+        incoming.clipData?.let { clip ->
+            for (i in 0 until clip.itemCount) clip.getItemAt(i).uri?.let(received::add)
+        }
+        runCatching { @Suppress("DEPRECATION") (incoming.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)) }.getOrNull()?.let(received::add)
+        runCatching { @Suppress("DEPRECATION") incoming.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) }.getOrNull()?.let { received.addAll(it) }
+        sharedImageUris.addAll(received.filter { it !in sharedImageUris })
     }
 
     fun checkForUpdates(showUpToDate: Boolean) {
@@ -236,7 +257,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun FamilyHome() {
+private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesConsumed: (List<Uri>) -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("familydocs", Context.MODE_PRIVATE) }
     var members by remember { mutableStateOf(readMembers(prefs)) }
@@ -353,10 +374,7 @@ private fun FamilyHome() {
                         }) {
                         Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "新增证件卡片", tint = Color.White, modifier = Modifier.size(28.dp)) }
                     }
-                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("家庭证件夹", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                        Text("共 " + docs.size + " 张证件", color = Color.LightGray, fontSize = 12.sp)
-                    }
+                    Spacer(Modifier.weight(1f))
                     Icon(Icons.Filled.Settings, "设置", Modifier.size(28.dp).clickable { flipResetToken++; showSettings = true }, tint = Color.White)
                 }
             }
@@ -445,38 +463,34 @@ private fun FamilyHome() {
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Row(
-                Modifier.fillMaxWidth().height(76.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val dragTestFile = remember { createDragTestImage(context) }
-                val dragTestBitmap = remember(dragTestFile.absolutePath) { BitmapFactory.decodeFile(dragTestFile.absolutePath) }
-                AndroidView(
-                    factory = { viewContext ->
-                        ImageView(viewContext).apply {
-                            scaleType = ImageView.ScaleType.CENTER_CROP
-                            setImageBitmap(dragTestBitmap)
-                            clipToOutline = true
-                            background = android.graphics.drawable.GradientDrawable().apply {
-                                cornerRadius = 18f * resources.displayMetrics.density
-                                setColor(android.graphics.Color.WHITE)
-                            }
-                            setOnLongClickListener { view ->
-                                runCatching {
-                                    val uri = FileProvider.getUriForFile(view.context, view.context.packageName + ".fileprovider", dragTestFile)
-                                    val clip = ClipData.newUri(view.context.contentResolver, "拖拽测试图片", uri)
-                                    view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
-                                }.isSuccess
+            if (sharedImageUris.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).height(76.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    sharedImageUris.forEach { sharedUri ->
+                        key(sharedUri) {
+                            val preview = remember(sharedUri) { runCatching { context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it) } }.getOrNull() }
+                            if (preview != null) {
+                                AndroidView(
+                                    factory = { viewContext -> ImageView(viewContext).apply {
+                                        scaleType = ImageView.ScaleType.CENTER_CROP
+                                        clipToOutline = true
+                                        background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 14f * resources.displayMetrics.density; setColor(android.graphics.Color.DKGRAY) }
+                                        setImageBitmap(preview)
+                                        setOnLongClickListener { view ->
+                                            runCatching {
+                                                val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
+                                                view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
+                                            }.getOrDefault(false)
+                                        }
+                                    } },
+                                    update = { it.setImageBitmap(preview) },
+                                    modifier = Modifier.size(width = 76.dp, height = 68.dp).shadow(5.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp))
+                                )
                             }
                         }
-                    },
-                    update = { it.setImageBitmap(dragTestBitmap) },
-                    modifier = Modifier.size(68.dp).shadow(8.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))
-                )
-                Text("长按拖动此图到卡片", color = Color.LightGray, fontSize = 12.sp)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
             }
-            Spacer(Modifier.height(8.dp))
             BoxWithConstraints(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = expanded == null).then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier).padding(bottom = 26.dp)
             ) {
@@ -518,9 +532,9 @@ private fun FamilyHome() {
                             height = cardHeight,
                             isExpanded = expanded == category,
                             onImportBack = { flipResetToken++; importCategory = category; importSide = "back"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            onDropUris = { uris ->
-                                val added = uris.mapNotNull { importFile(context, it, category, selected, "front") }
-                                if (added.isNotEmpty()) { docs = docs + added; writeDocs(prefs, docs) }
+                            onDropUris = { uris, side ->
+                                val added = uris.mapNotNull { importFile(context, it, category, selected, side) }
+                                if (added.isNotEmpty()) { docs = docs + added; writeDocs(prefs, docs); onSharedImagesConsumed(uris) }
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -895,7 +909,7 @@ private fun WalletCategoryCard(
     height: androidx.compose.ui.unit.Dp,
     isExpanded: Boolean,
     onImportBack: () -> Unit,
-    onDropUris: (List<Uri>) -> Unit,
+    onDropUris: (List<Uri>, String) -> Unit,
     modifier: Modifier = Modifier,
     resetFlipToken: Int,
     onClick: () -> Unit,
@@ -977,7 +991,7 @@ private fun WalletCategoryCard(
                                         ?: item.text?.toString()?.takeIf { it.startsWith("content://") }?.let(Uri::parse)
                                 }.distinct()
                                 if (uris.isEmpty()) false else {
-                                    currentDropHandler(uris)
+                                    currentDropHandler(uris, if (isExpanded && currentFlipped) "back" else "front")
                                     true
                                 }
                             } catch (_: Exception) {
@@ -1016,28 +1030,6 @@ private fun WalletCategoryCard(
             }
         }
     }
-}
-
-private fun createDragTestImage(context: Context): File {
-    val directory = File(context.filesDir, "updates").apply { mkdirs() }
-    val file = File(directory, "drag-test-image.jpg")
-    if (file.exists() && file.length() > 0L) return file
-    val bitmap = Bitmap.createBitmap(480, 480, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    canvas.drawColor(android.graphics.Color.rgb(116, 190, 210))
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-    paint.color = android.graphics.Color.rgb(250, 220, 130)
-    canvas.drawRoundRect(RectF(35f, 35f, 445f, 445f), 54f, 54f, paint)
-    paint.color = android.graphics.Color.rgb(70, 130, 150)
-    canvas.drawCircle(240f, 185f, 88f, paint)
-    paint.color = android.graphics.Color.WHITE
-    paint.textAlign = Paint.Align.CENTER
-    paint.textSize = 48f
-    paint.isFakeBoldText = true
-    canvas.drawText("TEST", 240f, 350f, paint)
-    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 92, it) }
-    bitmap.recycle()
-    return file
 }
 
 private fun exportOrRequestGallery(context: Context, file: File, setPending: (File) -> Unit, requestPermission: () -> Unit, done: (Boolean) -> Unit) {
