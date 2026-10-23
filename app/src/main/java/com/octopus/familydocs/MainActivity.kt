@@ -1174,7 +1174,7 @@ private fun decodeImageBitmap(path: String, maxDimension: Int): androidx.compose
         BitmapFactory.decodeFile(path, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxDimension && bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxDimension) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
         BitmapFactory.decodeFile(path, options)?.asImageBitmap()
     }.getOrNull()
@@ -1186,7 +1186,7 @@ private fun decodeUriBitmap(context: Context, uri: Uri, maxDimension: Int): Bitm
         context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
         var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxDimension && bounds.outHeight / (sample * 2) >= maxDimension) sample *= 2
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sample * 2) >= maxDimension) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample.coerceAtLeast(1) }
         context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
     }.getOrNull()
