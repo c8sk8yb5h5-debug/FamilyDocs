@@ -930,14 +930,18 @@ private fun WalletCategoryCard(
     val cardShape = RoundedCornerShape(20.dp)
     var isDropTargeted by remember { mutableStateOf(false) }
     var isFoilApplying by remember { mutableStateOf(false) }
-    val foilProgress = androidx.compose.animation.core.animateFloatAsState(
-        targetValue = if (isDropTargeted || isFoilApplying) 1f else 0f,
-        animationSpec = androidx.compose.animation.core.tween(
-            durationMillis = if (isFoilApplying) 1100 else 650,
-            easing = androidx.compose.animation.core.FastOutSlowInEasing
-        ),
-        label = "platinum-foil-coating"
-    )
+    val foilScope = rememberCoroutineScope()
+    val foilProgress = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(isDropTargeted, isFoilApplying) {
+        when {
+            isFoilApplying -> {
+                foilProgress.snapTo(0f)
+                foilProgress.animateTo(1f, androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            }
+            isDropTargeted -> foilProgress.animateTo(1f, androidx.compose.animation.core.tween(650, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            else -> foilProgress.animateTo(0f, androidx.compose.animation.core.tween(220))
+        }
+    }
     val currentDropHandler by rememberUpdatedState(onDropUris)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val currentFlipped by rememberUpdatedState(flipped)
@@ -1065,8 +1069,8 @@ private fun WalletCategoryCard(
                                 }.distinct()
                                 if (uris.isEmpty()) false else {
                                     currentDropHandler(uris, if (isExpanded && currentFlipped) "back" else "front")
-                                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                                        kotlinx.coroutines.delay(1250)
+                                    foilScope.launch {
+                                        delay(1250)
                                         isFoilApplying = false
                                     }
                                     true
