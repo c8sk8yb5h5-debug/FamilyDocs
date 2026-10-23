@@ -956,6 +956,8 @@ private fun WalletCategoryCard(
         }
     }
     val currentDropHandler by rememberUpdatedState(onDropUris)
+    // The drag target object is remembered, so keep expansion state current inside its callbacks.
+    val currentExpanded by rememberUpdatedState(isExpanded)
     var flipped by remember(name, resetFlipToken) { mutableStateOf(false) }
     val currentFlipped by rememberUpdatedState(flipped)
     val flipRotation by animateFloatAsState(targetValue = if (flipped) 180f else 0f, animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 420f), label = "card-flip-rotation")
@@ -1110,7 +1112,7 @@ private fun WalletCategoryCard(
                                 }.distinct()
                                 if (uris.isEmpty()) false else {
                                     isFoilApplying = true
-                                    currentDropHandler(uris, if (isExpanded && currentFlipped) "back" else "front")
+                                    currentDropHandler(uris, if (currentExpanded && currentFlipped) "back" else "front")
                                     foilScope.launch {
                                         delay(1250)
                                         isFoilApplying = false
