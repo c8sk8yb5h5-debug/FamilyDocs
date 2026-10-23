@@ -386,7 +386,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 key(sharedUri) {
                                     val preview = remember(sharedUri) {
                                         runCatching {
-                                            context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+                                            context.contentResolver.openInputStream(sharedUri)?.use { BitmapFactory.decodeStream(it) }
                                         }.getOrNull()
                                     }
                                     if (preview != null) {
@@ -399,7 +399,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                         setColor(android.graphics.Color.DKGRAY)
                                                     }
                                                     clipToOutline = true
-                                                    setImageBitmap(preview.asAndroidBitmap())
+                                                    setImageBitmap(preview)
                                                     setOnLongClickListener { view ->
                                                         runCatching {
                                                             val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
@@ -408,7 +408,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     }
                                                 }
                                             },
-                                            update = { it.setImageBitmap(preview.asAndroidBitmap()) },
+                                            update = { it.setImageBitmap(preview) },
                                             modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
                                         )
                                     }
