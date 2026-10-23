@@ -482,14 +482,15 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 withContext(Dispatchers.IO) { decodeImageBitmap(path, 256) }
                             }
                         }
+                        val loadedAvatarBitmap = avatarBitmap
                         val savedAvatarScale = prefs.getFloat("member_avatar_scale_" + member, 1f)
                         val savedAvatarX = prefs.getFloat("member_avatar_x_" + member, 0f)
                         val savedAvatarY = prefs.getFloat("member_avatar_y_" + member, 0f)
                         Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
                             Box(contentAlignment = Alignment.Center) {
-                                if (avatarBitmap != null) {
+                                if (loadedAvatarBitmap != null) {
                                     Image(
-                                        avatarBitmap,
+                                        loadedAvatarBitmap,
                                         contentDescription = "$member 头像",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -616,6 +617,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 withContext(Dispatchers.IO) { decodeImageBitmap(path, 512) }
             }
         }
+        val loadedDialogAvatar = avatarBitmap
         LaunchedEffect(member) { dialogEntered = true }
         Dialog(onDismissRequest = { editingMember = null }) {
             Column(
@@ -643,7 +645,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         }
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            if (avatarBitmap != null) {
+                            if (loadedDialogAvatar != null) {
                                 Box(
                                     Modifier.fillMaxSize().clip(CircleShape).pointerInput(member) {
                                         detectTransformGestures { centroid, pan, zoom, _ ->
@@ -658,7 +660,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     }
                                 ) {
                                     Image(
-                                        avatarBitmap,
+                                        loadedDialogAvatar,
                                         contentDescription = "调整头像照片位置和缩放",
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize().graphicsLayer {
@@ -978,6 +980,7 @@ private fun WalletCategoryCard(
             withContext(Dispatchers.IO) { decodeImageBitmap(doc.path, 1400) }
         }
     }
+    val loadedCardBitmap = bitmap
     val gradient = when (name.hashCode().absoluteValue % 5) {
         0 -> listOf(Color(0xFFE0F8FC), Color(0xFF9EDDE9), Color(0xFFB8EAF0))
         1 -> listOf(Color(0xFFE0FFF4), Color(0xFF9CE6D1), Color(0xFFB5F0DF))
@@ -1155,8 +1158,8 @@ private fun WalletCategoryCard(
             .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(Modifier.fillMaxSize().graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }.background(Brush.linearGradient(gradient))) {
-            if (bitmap != null) {
-                Image(bitmap = bitmap, contentDescription = name, contentScale = ContentScale.Crop,
+            if (loadedCardBitmap != null) {
+                Image(bitmap = loadedCardBitmap, contentDescription = name, contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f })
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
             } else {
