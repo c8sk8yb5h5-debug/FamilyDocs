@@ -535,7 +535,6 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     val doubleTapDetector = GestureDetector(viewContext, object : GestureDetector.SimpleOnGestureListener() {
                                                         override fun onDoubleTap(event: MotionEvent): Boolean {
                                                             viewingSharedImage = sharedUri
-                                                            viewingSharedImageVisible = true
                                                             return true
                                                         }
                                                     })
@@ -545,7 +544,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     }
                                                     setOnDragListener { draggedView, event ->
                                                         if (event.action == android.view.DragEvent.ACTION_DRAG_ENDED) {
-                                                            draggedView.animate().scaleX(1f).scaleY(1f).alpha(1f).translationZ(0f).setDuration(160L).start()
+                                                            draggedView.animate().scaleX(1f).scaleY(1f).alpha(1f).translationZ(0f).setDuration(180L).start()
                                                         }
                                                         false
                                                     }
@@ -553,13 +552,32 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                         runCatching {
                                                             view.animate().scaleX(1.12f).scaleY(1.12f).alpha(0.78f).translationZ(12f).setDuration(130L).start()
                                                             val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
-                                                            view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
+                                                            val shadow = object : View.DragShadowBuilder(view) {
+                                                                override fun onProvideShadowMetrics(outShadowSize: Point, outShadowTouchPoint: Point) {
+                                                                    outShadowSize.set((view.width * 1.12f).roundToInt(), (view.height * 1.12f).roundToInt())
+                                                                    outShadowTouchPoint.set(outShadowSize.x / 2, outShadowSize.y / 2)
+                                                                }
+                                                                override fun onDrawShadow(canvas: Canvas) {
+                                                                    val save = canvas.save()
+                                                                    canvas.scale(1.12f, 1.12f, view.width / 2f, view.height / 2f)
+                                                                    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = 200 }
+                                                                    val layer = canvas.saveLayer(0f, 0f, view.width.toFloat(), view.height.toFloat(), paint)
+                                                                    view.draw(canvas)
+                                                                    canvas.restoreToCount(layer)
+                                                                    canvas.restoreToCount(save)
+                                                                }
+                                                            }
+                                                            view.startDragAndDrop(clip, shadow, null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
                                                         }.getOrDefault(false)
                                                     }
                                                 }
                                             },
                                             update = { it.setImageBitmap(previewBitmap) },
                                             modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
+                                                .onGloballyPositioned { coordinates ->
+                                                    val bounds = coordinates.boundsInWindow()
+                                                    if (sharedImageBounds[sharedUri] != bounds) sharedImageBounds = sharedImageBounds + (sharedUri to bounds)
+                                                }
 
                                         )
                                     }
@@ -1113,26 +1131,63 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             value = withContext(Dispatchers.IO) { decodeUriBitmap(context, uri, 3000) }
         }
         val loadedSharedBitmap = fullBitmap
+        LaunchedEffect(uri) {
+            sharedPreviewProgress.snapTo(0f)
+            sharedPreviewProgress.animateTo(1f, animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        }
+        val sourceBounds = sharedImageBounds[uri]
         Dialog(
             onDismissRequest = {
-                viewingSharedImageVisible = false
-                scope.launch { delay(160); viewingSharedImage = null }
+                scope.launch {
+                    sharedPreviewProgress.animateTo(0f, animationSpec = tween(190, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                    viewingSharedImage = null
+                }
             },
-            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
-            AnimatedVisibility(
-                visible = viewingSharedImageVisible,
-                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f, animationSpec = tween(180)),
-                exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.96f, animationSpec = tween(140))
-            ) {
-                Box(Modifier.fillMaxSize().background(Color.Black).clickable {
-                    viewingSharedImageVisible = false
-                    scope.launch { delay(160); viewingSharedImage = null }
-                }, contentAlignment = Alignment.Center) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val density = LocalDensity.current
+                val progress = sharedPreviewProgress.value
+                val containerWidthPx = with(density) { maxWidth.toPx() }
+                val containerHeightPx = with(density) { maxHeight.toPx() }
+                val bitmapWidth = loadedSharedBitmap?.width?.toFloat()?.coerceAtLeast(1f) ?: 1f
+                val bitmapHeight = loadedSharedBitmap?.height?.toFloat()?.coerceAtLeast(1f) ?: 1f
+                val targetScale = minOf(containerWidthPx * 0.94f / bitmapWidth, containerHeightPx * 0.90f / bitmapHeight)
+                val targetWidth = bitmapWidth * targetScale
+                val targetHeight = bitmapHeight * targetScale
+                val source = sourceBounds ?: Rect(
+                    left = containerWidthPx / 2f - 21f * density.density,
+                    top = containerHeightPx / 2f - 21f * density.density,
+                    right = containerWidthPx / 2f + 21f * density.density,
+                    bottom = containerHeightPx / 2f + 21f * density.density
+                )
+                val sourceLeft = source.left.coerceIn(0f, containerWidthPx)
+                val sourceTop = source.top.coerceIn(0f, containerHeightPx)
+                val sourceWidth = source.width.coerceAtLeast(1f)
+                val sourceHeight = source.height.coerceAtLeast(1f)
+                val left = sourceLeft + ((containerWidthPx - targetWidth) / 2f - sourceLeft) * progress
+                val top = sourceTop + ((containerHeightPx - targetHeight) / 2f - sourceTop) * progress
+                val width = sourceWidth + (targetWidth - sourceWidth) * progress
+                val height = sourceHeight + (targetHeight - sourceHeight) * progress
+                Box(
+                    Modifier.fillMaxSize()
+                        .background(Color.Black.copy(alpha = progress))
+                        .clickable {
+                            scope.launch {
+                                sharedPreviewProgress.animateTo(0f, animationSpec = tween(190, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+                                viewingSharedImage = null
+                            }
+                        }
+                ) {
                     if (loadedSharedBitmap != null) {
-                        Image(loadedSharedBitmap.asImageBitmap(), contentDescription = "查看待处理图片",
+                        Image(
+                            loadedSharedBitmap.asImageBitmap(),
+                            contentDescription = "查看待处理图片",
                             contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f))
+                            modifier = Modifier
+                                .offset { androidx.compose.ui.unit.IntOffset(left.roundToInt(), top.roundToInt()) }
+                                .size(with(density) { width.toDp() }, with(density) { height.toDp() })
+                        )
                     }
                 }
             }
