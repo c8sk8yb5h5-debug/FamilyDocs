@@ -1063,14 +1063,15 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
         AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
             confirmButton = { TextButton(onClick = {
                 flipResetToken++
+                val deletingOwner = selected
                 confirmDeleteCategory = null
                 exitingCategories = exitingCategories + category
                 scope.launch {
                     delay(200)
-                    val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                    val removed = docs.filter { it.owner == deletingOwner && matchesCategory(it.category, category) }
                     removed.forEach { File(it.path).delete() }
                     docs = docs.filterNot { it in removed }
-                    val hasOtherOwners = docs.any { it.owner != selected && matchesCategory(it.category, category) }
+                    val hasOtherOwners = docs.any { it.owner != deletingOwner && matchesCategory(it.category, category) }
                     if (!hasOtherOwners) {
                         categories = categories.filterNot { it == category }
                         categoryOwners = categoryOwners - category
