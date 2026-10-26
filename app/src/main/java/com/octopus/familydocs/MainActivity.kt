@@ -1166,6 +1166,7 @@ private fun WalletCategoryCard(
     onDelete: (Doc) -> Unit
 ) {
     val context = LocalContext.current
+    val reorderThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 68.dp.toPx() }
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1380,7 +1381,6 @@ private fun WalletCategoryCard(
             }
             .pointerInput(name) {
                 var accumulatedDrag = 0f
-                val reorderThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 68.dp.toPx() }
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         accumulatedDrag = 0f
@@ -1402,11 +1402,11 @@ private fun WalletCategoryCard(
                         liveDragOffset += amount.y
                         accumulatedDrag += amount.y
                         dragTilt = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-4f, 4f)
-                        if (kotlin.math.abs(accumulatedDrag) >= reorderThreshold) {
+                        if (kotlin.math.abs(accumulatedDrag) >= reorderThresholdPx) {
                             val direction = if (accumulatedDrag > 0f) 1 else -1
                             onReorder(name, direction)
-                            liveDragOffset -= direction * reorderThreshold
-                            accumulatedDrag -= direction * reorderThreshold
+                            liveDragOffset -= direction * reorderThresholdPx
+                            accumulatedDrag -= direction * reorderThresholdPx
                         }
                     }
                 )
