@@ -1466,6 +1466,7 @@ private fun WalletCategoryCard(
                         if (kotlin.math.abs(accumulatedDrag) >= reorderThresholdPx) {
                             val direction = if (accumulatedDrag > 0f) 1 else -1
                             onReorder(name, direction)
+                            reorderDragOffset -= direction * reorderThresholdPx
                             accumulatedDrag -= direction * reorderThresholdPx
                         }
                     }
