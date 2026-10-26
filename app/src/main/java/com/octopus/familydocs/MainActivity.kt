@@ -23,6 +23,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Point
 import androidx.core.content.FileProvider
 import android.net.Uri
 import android.os.Bundle
@@ -66,6 +67,9 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
@@ -75,6 +79,8 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -117,6 +123,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.absoluteValue
+import kotlin.math.roundToInt
 
 private val ScreenBg = Color(0xFF262728)
 private val HeaderBg = Color(0xFF3A3B3D)
@@ -391,10 +398,12 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var editingMemberNameActive by remember { mutableStateOf(false) }
     var avatarRefresh by remember { mutableIntStateOf(0) }
     var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
+    var newMemberAvatarPath by remember { mutableStateOf<String?>(null) }
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     var editingCategory by remember { mutableStateOf<String?>(null) }
     var viewingSharedImage by remember { mutableStateOf<Uri?>(null) }
-    var viewingSharedImageVisible by remember { mutableStateOf(false) }
+    var sharedImageBounds by remember { mutableStateOf<Map<Uri, Rect>>(emptyMap()) }
+    val sharedPreviewProgress = remember { androidx.compose.animation.core.Animatable(0f) }
     var exitingCategories by remember { mutableStateOf(setOf<String>()) }
     var enteringCategories by remember { mutableStateOf(setOf<String>()) }
     var draggingCategory by remember { mutableStateOf<String?>(null) }
@@ -415,11 +424,19 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             runCatching {
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     val dir = File(context.filesDir, "member-avatars").apply { mkdirs() }
-                    val target = File(dir, member.hashCode().toString() + "_avatar.jpg")
-                    target.outputStream().use { output -> input.copyTo(output) }
-                    prefs.edit().putString("member_avatar_" + member, target.absolutePath).apply()
-                    avatarRefresh++
+                    if (member == "__new_member__") {
+                        val target = File(dir, "new-member-preview.jpg")
+                        target.outputStream().use { output -> input.copyTo(output) }
+                        newMemberAvatarPath = target.absolutePath
+                    } else {
+                        val target = File(dir, member.hashCode().toString() + "_avatar.jpg")
+                        target.outputStream().use { output -> input.copyTo(output) }
+                        prefs.edit().putString("member_avatar_" + member, target.absolutePath).apply()
+                        avatarRefresh++
+                    }
                 }
+            }.onFailure {
+                Toast.makeText(context, "头像读取失败", Toast.LENGTH_SHORT).show()
             }
         }
         pendingAvatarMember = null
