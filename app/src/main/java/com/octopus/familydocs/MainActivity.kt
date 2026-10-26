@@ -681,8 +681,6 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     ordered.forEachIndexed { index, category ->
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
                         var dragDistance by remember(category) { mutableFloatStateOf(0f) }
-                        var liveDragOffset by remember(category) { mutableFloatStateOf(0f) }
-                        var dragTilt by remember(category) { mutableFloatStateOf(0f) }
                         val selectedIndex = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                         val targetOffset = when {
                             selectedIndex == null -> stackStep * index
@@ -691,8 +689,6 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             else -> cardHeight + 16.dp + stackStep * (index - selectedIndex - 1)
                         }
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
-                        val animatedDragOffset by animateFloatAsState(liveDragOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow), label = "card-drag-settle")
-                        val animatedDragTilt by animateFloatAsState(dragTilt, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium), label = "card-drag-tilt")
                         WalletCategoryCard(
                             name = category,
                             count = categoryDocs.size,
@@ -716,14 +712,12 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 .height(cardHeight)
                                 .offset(y = animatedOffset)
                                 .graphicsLayer {
-                                    translationY = animatedDragOffset
-                                    rotationZ = animatedDragTilt
-                                    val lifting = if (liveDragOffset != 0f) 1.015f else 1f
+                                    val lifting = if (expanded == category) 1.015f else 1f
                                     scaleX = lifting
                                     scaleY = lifting
                                 }
                                 // Earlier cards sit visually above the cards beneath them so their bottom-edge shadows remain visible.
-                                .zIndex(if (liveDragOffset != 0f || expanded == category) ordered.size + 2f else (ordered.size - index).toFloat()),
+                                .zIndex(if (expanded == category) ordered.size + 2f else (ordered.size - index).toFloat()),
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onDoubleClick = { flipResetToken++; editingCategory = category },
@@ -1382,30 +1376,15 @@ private fun WalletCategoryCard(
             .pointerInput(name) {
                 var accumulatedDrag = 0f
                 detectDragGesturesAfterLongPress(
-                    onDragStart = {
-                        accumulatedDrag = 0f
-                        liveDragOffset = 0f
-                        dragTilt = 0f
-                    },
-                    onDragEnd = {
-                        liveDragOffset = 0f
-                        dragTilt = 0f
-                        accumulatedDrag = 0f
-                    },
-                    onDragCancel = {
-                        liveDragOffset = 0f
-                        dragTilt = 0f
-                        accumulatedDrag = 0f
-                    },
+                    onDragStart = { accumulatedDrag = 0f },
+                    onDragEnd = { accumulatedDrag = 0f },
+                    onDragCancel = { accumulatedDrag = 0f },
                     onDrag = { change, amount ->
                         change.consume()
-                        liveDragOffset += amount.y
                         accumulatedDrag += amount.y
-                        dragTilt = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-4f, 4f)
                         if (kotlin.math.abs(accumulatedDrag) >= reorderThresholdPx) {
                             val direction = if (accumulatedDrag > 0f) 1 else -1
                             onReorder(name, direction)
-                            liveDragOffset -= direction * reorderThresholdPx
                             accumulatedDrag -= direction * reorderThresholdPx
                         }
                     }
