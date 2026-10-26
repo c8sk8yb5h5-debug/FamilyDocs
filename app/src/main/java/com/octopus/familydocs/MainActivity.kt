@@ -91,6 +91,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
@@ -386,6 +388,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var pendingAvatarMember by remember { mutableStateOf<String?>(null) }
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     var editingCategory by remember { mutableStateOf<String?>(null) }
+    var viewingSharedImage by remember { mutableStateOf<Uri?>(null) }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
     var flipResetToken by remember { mutableIntStateOf(0) }
@@ -510,6 +513,9 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                             },
                                             update = { it.setImageBitmap(previewBitmap) },
                                             modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
+                                                .pointerInput(sharedUri) {
+                                                    detectTapGestures(onDoubleTap = { viewingSharedImage = sharedUri })
+                                                }
                                         )
                                     }
                                 }
@@ -612,7 +618,28 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             }
             Spacer(Modifier.height(12.dp))
             BoxWithConstraints(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll, enabled = expanded == null).then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier).padding(bottom = 26.dp)
+                Modifier.weight(1f).fillMaxWidth()
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        // Alpha-mask the lower card stack to true transparency, avoiding a visible overlay edge.
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0.0f to Color.White,
+                                    0.58f to Color.White,
+                                    0.82f to Color.White.copy(alpha = 0.42f),
+                                    1.0f to Color.Transparent
+                                ),
+                                startY = size.height - 190.dp.toPx(),
+                                endY = size.height
+                            ),
+                            blendMode = BlendMode.DstIn
+                        )
+                    }
+                    .verticalScroll(scroll, enabled = expanded == null)
+                    .then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier)
+                    .padding(bottom = 26.dp)
             ) {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
@@ -685,23 +712,6 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 }
             }
         }
-        // Fade the lower card stack smoothly into the screen background to avoid a hard cutoff.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(152.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colorStops = arrayOf(
-                            0.0f to Color.Transparent,
-                            0.42f to ScreenBg.copy(alpha = 0.42f),
-                            0.76f to ScreenBg.copy(alpha = 0.82f),
-                            1.0f to ScreenBg
-                        )
-                    )
-                )
-        )
     }
 
     if (editingMember != null) {
@@ -954,6 +964,23 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             confirmButton = {},
             dismissButton = { TextButton(onClick = { flipResetToken++; confirmDeleteCategory = category; editingCategory = null }) { Text("删除卡片", color = MaterialTheme.colorScheme.error) } }
         )
+    }
+
+    if (viewingSharedImage != null) {
+        val uri = viewingSharedImage!!
+        val fullBitmap by produceState<Bitmap?>(initialValue = null, uri) {
+            value = withContext(Dispatchers.IO) { decodeUriBitmap(context, uri, 3000) }
+        }
+        val loadedSharedBitmap = fullBitmap
+        Dialog(onDismissRequest = { viewingSharedImage = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(Modifier.fillMaxSize().background(Color.Black).clickable { viewingSharedImage = null }, contentAlignment = Alignment.Center) {
+                if (loadedSharedBitmap != null) {
+                    Image(loadedSharedBitmap.asImageBitmap(), contentDescription = "查看待处理图片",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f))
+                }
+            }
+        }
     }
 
     if (viewingPhoto != null) {
