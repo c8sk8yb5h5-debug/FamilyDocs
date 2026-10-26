@@ -17,6 +17,8 @@ import android.provider.Settings
 import android.widget.Toast
 import android.widget.ImageView
 import android.view.View
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -503,6 +505,16 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     }
                                                     clipToOutline = true
                                                     setImageBitmap(previewBitmap)
+                                                    val doubleTapDetector = GestureDetector(viewContext, object : GestureDetector.SimpleOnGestureListener() {
+                                                        override fun onDoubleTap(event: MotionEvent): Boolean {
+                                                            viewingSharedImage = sharedUri
+                                                            return true
+                                                        }
+                                                    })
+                                                    setOnTouchListener { _, event ->
+                                                        doubleTapDetector.onTouchEvent(event)
+                                                        false
+                                                    }
                                                     setOnLongClickListener { view ->
                                                         runCatching {
                                                             val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
@@ -513,9 +525,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                             },
                                             update = { it.setImageBitmap(previewBitmap) },
                                             modifier = Modifier.size(42.dp).clip(CircleShape).border(1.dp, Color.White.copy(alpha = 0.72f), CircleShape)
-                                                .pointerInput(sharedUri) {
-                                                    detectTapGestures(onDoubleTap = { viewingSharedImage = sharedUri })
-                                                }
+
                                         )
                                     }
                                 }
@@ -649,8 +659,20 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
                         (category !in defaultCategories && categoryOwners[category] == selected)
                 }
-                // Keep the category order stable; selection changes the stack geometry, not the list order.
+                // Cards are displayed in reverse order; drag reordering persists the visual order.
                 val ordered = visibleCategories.reversed()
+                val reorderCard: (String, Int) -> Unit = { draggedCategory, direction ->
+                    val visualOrder = categories.filter { it in visibleCategories }.reversed().toMutableList()
+                    val from = visualOrder.indexOf(draggedCategory)
+                    val to = (from + direction).coerceIn(0, visualOrder.lastIndex)
+                    if (from >= 0 && to != from) {
+                        val moved = visualOrder.removeAt(from)
+                        visualOrder.add(to, moved)
+                        val categoryIterator = visualOrder.reversed().iterator()
+                        categories = categories.map { item -> if (item in visibleCategories) categoryIterator.next() else item }
+                        prefs.edit().putString("categories", JSONArray(categories).toString()).commit()
+                    }
+                }
                 val selectedIndexForHeight = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                 val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
@@ -704,7 +726,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 .zIndex(if (liveDragOffset != 0f || expanded == category) ordered.size + 2f else (ordered.size - index).toFloat()),
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
-                            onLongClick = { flipResetToken++; editingCategory = category },
+                            onDoubleClick = { flipResetToken++; editingCategory = category },
+                            onReorder = reorderCard,
                             onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
@@ -1137,7 +1160,8 @@ private fun WalletCategoryCard(
     modifier: Modifier = Modifier,
     resetFlipToken: Int,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onDoubleClick: () -> Unit,
+    onReorder: (String, Int) -> Unit,
     onImport: () -> Unit,
     onDelete: (Doc) -> Unit
 ) {
@@ -1354,7 +1378,46 @@ private fun WalletCategoryCard(
                     }
                 )
             }
-            .combinedClickable(interactionSource = source, indication = null, onClick = onClick, onLongClick = onLongClick)
+            .pointerInput(name) {
+                var accumulatedDrag = 0f
+                val reorderThreshold = with(androidx.compose.ui.platform.LocalDensity.current) { 68.dp.toPx() }
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        accumulatedDrag = 0f
+                        liveDragOffset = 0f
+                        dragTilt = 0f
+                    },
+                    onDragEnd = {
+                        liveDragOffset = 0f
+                        dragTilt = 0f
+                        accumulatedDrag = 0f
+                    },
+                    onDragCancel = {
+                        liveDragOffset = 0f
+                        dragTilt = 0f
+                        accumulatedDrag = 0f
+                    },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        liveDragOffset += amount.y
+                        accumulatedDrag += amount.y
+                        dragTilt = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-4f, 4f)
+                        if (kotlin.math.abs(accumulatedDrag) >= reorderThreshold) {
+                            val direction = if (accumulatedDrag > 0f) 1 else -1
+                            onReorder(name, direction)
+                            liveDragOffset -= direction * reorderThreshold
+                            accumulatedDrag -= direction * reorderThreshold
+                        }
+                    }
+                )
+            }
+            .combinedClickable(
+                interactionSource = source,
+                indication = null,
+                onClick = onClick,
+                onDoubleClick = onDoubleClick,
+                onLongClick = null
+            )
     ) {
         Box(Modifier.fillMaxSize().graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }.background(Brush.linearGradient(gradient))) {
             if (loadedCardBitmap != null) {
