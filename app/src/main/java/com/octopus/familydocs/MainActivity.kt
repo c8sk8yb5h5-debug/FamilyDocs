@@ -50,7 +50,10 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
@@ -391,6 +394,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var confirmDeleteMember by remember { mutableStateOf<String?>(null) }
     var editingCategory by remember { mutableStateOf<String?>(null) }
     var viewingSharedImage by remember { mutableStateOf<Uri?>(null) }
+    var viewingSharedImageVisible by remember { mutableStateOf(false) }
+    var exitingCategories by remember { mutableStateOf(setOf<String>()) }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
     var flipResetToken by remember { mutableIntStateOf(0) }
@@ -508,6 +513,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                     val doubleTapDetector = GestureDetector(viewContext, object : GestureDetector.SimpleOnGestureListener() {
                                                         override fun onDoubleTap(event: MotionEvent): Boolean {
                                                             viewingSharedImage = sharedUri
+                                                            viewingSharedImageVisible = true
                                                             return true
                                                         }
                                                     })
@@ -515,8 +521,15 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                                         doubleTapDetector.onTouchEvent(event)
                                                         false
                                                     }
+                                                    setOnDragListener { draggedView, event ->
+                                                        if (event.action == android.view.DragEvent.ACTION_DRAG_ENDED) {
+                                                            draggedView.animate().scaleX(1f).scaleY(1f).alpha(1f).translationZ(0f).setDuration(160L).start()
+                                                        }
+                                                        false
+                                                    }
                                                     setOnLongClickListener { view ->
                                                         runCatching {
+                                                            view.animate().scaleX(1.12f).scaleY(1.12f).alpha(0.78f).translationZ(12f).setDuration(130L).start()
                                                             val clip = ClipData.newUri(view.context.contentResolver, "FamilyDocs 图片", sharedUri)
                                                             view.startDragAndDrop(clip, View.DragShadowBuilder(view), null, View.DRAG_FLAG_GLOBAL or View.DRAG_FLAG_GLOBAL_URI_READ)
                                                         }.getOrDefault(false)
@@ -542,12 +555,23 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 members.forEachIndexed { index, member ->
                     val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
                     var memberDragX by remember(member) { mutableFloatStateOf(0f) }
+                    val memberPillColor by androidx.compose.animation.animateColorAsState(
+                        targetValue = if (member == selected) Color.Black else Color.Transparent,
+                        animationSpec = tween(190),
+                        label = "member-selection-color"
+                    )
+                    val selectedVerticalPadding by animateDpAsState(
+                        targetValue = if (member == selected) 9.dp else 6.dp,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                        label = "member-selection-padding"
+                    )
                     Column(
                         Modifier.scale(selectedScale)
+                            .animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
                             .zIndex(if (memberDragX != 0f) 2f else 0f)
                             .graphicsLayer { translationX = memberDragX }
                             .clip(RoundedCornerShape(34.dp))
-                            .background(if (member == selected) Color.Black else Color.Transparent)
+                            .background(memberPillColor)
                             .pointerInput(member, members) {
                                 detectTapGestures(
                                     onTap = { flipResetToken++; selected = member },
@@ -588,7 +612,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     }
                                 )
                             }
-                            .padding(horizontal = 7.dp, vertical = if (member == selected) 9.dp else 6.dp),
+                            .padding(horizontal = 7.dp, vertical = selectedVerticalPadding),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         val avatarPath = prefs.getString("member_avatar_" + member, null)
@@ -656,7 +680,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 val stackStepPx = with(LocalDensity.current) { stackStep.toPx() }
                 val defaultCategories = setOf("Medical Documents", "Educational Documents", "Vehicle Documents", "Personal Documents", "Other Documents", "身份证件", "银行卡", "家庭资料", "其他证件")
                 val visibleCategories = categories.filter { category ->
-                    docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
+                    category in exitingCategories ||
+                        docs.any { it.owner == selected && matchesCategory(it.category, category) } ||
                         (category !in defaultCategories && categoryOwners[category] == selected)
                 }
                 // Cards are displayed in reverse order; drag reordering persists the visual order.
@@ -678,9 +703,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
                 Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
                     if (ordered.isEmpty()) { }
-                    ordered.forEachIndexed { index, category ->
+                    ordered.forEachIndexed { index, category -> key(category) {
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
-                        var dragDistance by remember(category) { mutableFloatStateOf(0f) }
                         val selectedIndex = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                         val targetOffset = when {
                             selectedIndex == null -> stackStep * index
@@ -689,6 +713,13 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             else -> cardHeight + 16.dp + stackStep * (index - selectedIndex - 1)
                         }
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
+                        AnimatedVisibility(
+                            visible = category !in exitingCategories,
+                            enter = fadeIn(tween(220)) + expandVertically(animationSpec = tween(240)),
+                            exit = fadeOut(tween(180)) + shrinkVertically(animationSpec = tween(180)),
+                            modifier = Modifier.fillMaxWidth().height(cardHeight).offset(y = animatedOffset)
+                                .zIndex(if (expanded == category) ordered.size + 2f else (ordered.size - index).toFloat())
+                        ) {
                         WalletCategoryCard(
                             name = category,
                             count = categoryDocs.size,
@@ -707,17 +738,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     onSharedImagesConsumed(uris)
                                 }
                             },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(cardHeight)
-                                .offset(y = animatedOffset)
-                                .graphicsLayer {
-                                    val lifting = if (expanded == category) 1.015f else 1f
-                                    scaleX = lifting
-                                    scaleY = lifting
-                                }
-                                // Earlier cards sit visually above the cards beneath them so their bottom-edge shadows remain visible.
-                                .zIndex(if (expanded == category) ordered.size + 2f else (ordered.size - index).toFloat()),
+                            modifier = Modifier.fillMaxSize().graphicsLayer {
+                                val lifting = if (expanded == category) 1.015f else 1f
+                                scaleX = lifting
+                                scaleY = lifting
+                            },
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onDoubleClick = { flipResetToken++; editingCategory = category },
@@ -725,7 +750,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
                         )
-                    }
+                        }
+                    } }
                 }
             }
         }
@@ -989,12 +1015,27 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             value = withContext(Dispatchers.IO) { decodeUriBitmap(context, uri, 3000) }
         }
         val loadedSharedBitmap = fullBitmap
-        Dialog(onDismissRequest = { viewingSharedImage = null }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-            Box(Modifier.fillMaxSize().background(Color.Black).clickable { viewingSharedImage = null }, contentAlignment = Alignment.Center) {
-                if (loadedSharedBitmap != null) {
-                    Image(loadedSharedBitmap.asImageBitmap(), contentDescription = "查看待处理图片",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f))
+        Dialog(
+            onDismissRequest = {
+                viewingSharedImageVisible = false
+                scope.launch { delay(160); viewingSharedImage = null }
+            },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            AnimatedVisibility(
+                visible = viewingSharedImageVisible,
+                enter = fadeIn(tween(180)) + scaleIn(initialScale = 0.92f, animationSpec = tween(180)),
+                exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.96f, animationSpec = tween(140))
+            ) {
+                Box(Modifier.fillMaxSize().background(Color.Black).clickable {
+                    viewingSharedImageVisible = false
+                    scope.launch { delay(160); viewingSharedImage = null }
+                }, contentAlignment = Alignment.Center) {
+                    if (loadedSharedBitmap != null) {
+                        Image(loadedSharedBitmap.asImageBitmap(), contentDescription = "查看待处理图片",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.92f))
+                    }
                 }
             }
         }
@@ -1022,18 +1063,23 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
         AlertDialog(onDismissRequest = { confirmDeleteCategory = null }, title = { Text("删除证件卡片？") },
             confirmButton = { TextButton(onClick = {
                 flipResetToken++
-                val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
-                removed.forEach { File(it.path).delete() }
-                docs = docs.filterNot { it in removed }
-                val hasOtherOwners = docs.any { it.owner != selected && matchesCategory(it.category, category) }
-                if (!hasOtherOwners) {
-                    categories = categories.filterNot { it == category }
-                    categoryOwners = categoryOwners - category
-                }
-                prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
-                writeDocs(prefs, docs)
-                if (expanded == category) expanded = null
                 confirmDeleteCategory = null
+                exitingCategories = exitingCategories + category
+                scope.launch {
+                    delay(200)
+                    val removed = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                    removed.forEach { File(it.path).delete() }
+                    docs = docs.filterNot { it in removed }
+                    val hasOtherOwners = docs.any { it.owner != selected && matchesCategory(it.category, category) }
+                    if (!hasOtherOwners) {
+                        categories = categories.filterNot { it == category }
+                        categoryOwners = categoryOwners - category
+                    }
+                    prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
+                    writeDocs(prefs, docs)
+                    if (expanded == category) expanded = null
+                    exitingCategories = exitingCategories - category
+                }
             }) { Text("删除", color = MaterialTheme.colorScheme.error) } },
             dismissButton = { TextButton(onClick = { confirmDeleteCategory = null }) { Text("取消") } })
     }
@@ -1171,6 +1217,33 @@ private fun WalletCategoryCard(
     val cardShape = RoundedCornerShape(20.dp)
     var isDropTargeted by remember { mutableStateOf(false) }
     var isFoilApplying by remember { mutableStateOf(false) }
+    var isReordering by remember(name) { mutableStateOf(false) }
+    var reorderDragOffset by remember(name) { mutableFloatStateOf(0f) }
+    var reorderTiltTarget by remember(name) { mutableFloatStateOf(0f) }
+    val animatedReorderOffset by animateFloatAsState(
+        targetValue = if (isReordering) reorderDragOffset else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "card-reorder-offset"
+    )
+    val animatedReorderScale by animateFloatAsState(
+        targetValue = if (isReordering) 1.035f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "card-reorder-lift"
+    )
+    val animatedReorderTilt by animateFloatAsState(
+        targetValue = if (isReordering) reorderTiltTarget else 0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "card-reorder-tilt"
+    )
+    val cardElevation by animateDpAsState(
+        targetValue = when {
+            isReordering -> 30.dp
+            isDropTargeted || isFoilApplying -> 24.dp
+            else -> 12.dp
+        },
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+        label = "card-interaction-elevation"
+    )
     val foilScope = rememberCoroutineScope()
     val foilProgress = androidx.compose.runtime.remember { androidx.compose.animation.core.Animatable(0f) }
     LaunchedEffect(isDropTargeted, isFoilApplying) {
@@ -1209,7 +1282,13 @@ private fun WalletCategoryCard(
     Box(
         modifier
             .scale(scale)
-            .shadow(elevation = if (isDropTargeted || isFoilApplying) 24.dp else 18.dp, shape = cardShape, clip = false)
+            .shadow(elevation = cardElevation, shape = cardShape, clip = false)
+            .graphicsLayer {
+                translationY = animatedReorderOffset
+                scaleX = animatedReorderScale
+                scaleY = animatedReorderScale
+                rotationZ = animatedReorderTilt
+            }
             .clip(cardShape)
             .drawWithContent {
                 drawContent()
@@ -1254,7 +1333,7 @@ private fun WalletCategoryCard(
                         blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                     )
                     // Clearly visible concentric security-print rings in alternating cool and warm hues.
-                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 22.dp.toPx() }
+                    val spacing = with(androidx.compose.ui.unit.Density(size.width / 360f)) { 27.dp.toPx() }
                     val radiusStep = maxOf(spacing, 1f)
                     val ringPalette = listOf(
                         Color(0xBFFFFFFF), Color(0xA86CEDE8),
@@ -1280,10 +1359,10 @@ private fun WalletCategoryCard(
                                     blendMode = androidx.compose.ui.graphics.BlendMode.Screen
                                 )
                             }
-                            col += radiusStep * 3.0f
+                            col += radiusStep * 3.35f
                             colIndex++
                         }
-                        row += radiusStep * 2.45f
+                        row += radiusStep * 2.8f
                         rowIndex++
                     }
                     // Bright leading edge, like a real film being pressed from one side to the other.
@@ -1376,11 +1455,13 @@ private fun WalletCategoryCard(
             .pointerInput(name) {
                 var accumulatedDrag = 0f
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { accumulatedDrag = 0f },
-                    onDragEnd = { accumulatedDrag = 0f },
-                    onDragCancel = { accumulatedDrag = 0f },
+                    onDragStart = { accumulatedDrag = 0f; reorderDragOffset = 0f; reorderTiltTarget = 0f; isReordering = true },
+                    onDragEnd = { accumulatedDrag = 0f; isReordering = false; reorderTiltTarget = 0f },
+                    onDragCancel = { accumulatedDrag = 0f; isReordering = false; reorderTiltTarget = 0f },
                     onDrag = { change, amount ->
                         change.consume()
+                        reorderDragOffset += amount.y
+                        reorderTiltTarget = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-2.5f, 2.5f)
                         accumulatedDrag += amount.y
                         if (kotlin.math.abs(accumulatedDrag) >= reorderThresholdPx) {
                             val direction = if (accumulatedDrag > 0f) 1 else -1
