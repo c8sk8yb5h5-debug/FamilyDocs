@@ -81,6 +81,7 @@ import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -629,7 +630,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             }
                             .shadow(memberElevation, RoundedCornerShape(34.dp), clip = false)
                             .zIndex(if (isMemberDragging) 10f else 0f)
-                            .animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.Stiffness.Low))
+                            .animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
                             .clip(RoundedCornerShape(34.dp))
                             .background(memberPillColor)
                             .pointerInput(member) {
@@ -1218,12 +1219,26 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Box(
-                        modifier = Modifier.size(184.dp).clip(CircleShape)
-                            .background(Color(0xFFCAD8D9)),
-                        contentAlignment = Alignment.Center
+                    val newAvatarBitmap by produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null, newMemberAvatarPath) {
+                        value = newMemberAvatarPath?.let { path ->
+                            withContext(Dispatchers.IO) { decodeImageBitmap(path, 512) }
+                        }
+                    }
+                    Surface(
+                        color = Color(0xFFCAD8D9),
+                        shape = CircleShape,
+                        modifier = Modifier.size(184.dp).clickable {
+                            pendingAvatarMember = "__new_member__"
+                            avatarPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        }
                     ) {
-                        Text(memberText.trim().firstOrNull()?.uppercase() ?: "+", color = Ink, fontSize = 42.sp, fontWeight = FontWeight.Medium)
+                        Box(contentAlignment = Alignment.Center) {
+                            if (newAvatarBitmap != null) {
+                                Image(newAvatarBitmap!!, contentDescription = "新成员头像", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            } else {
+                                Text(memberText.trim().firstOrNull()?.uppercase() ?: "+", color = Ink, fontSize = 42.sp, fontWeight = FontWeight.Medium)
+                            }
+                        }
                     }
                     OutlinedTextField(
                         value = memberText,
@@ -1244,7 +1259,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.size(58.dp).clip(CircleShape).background(Color(0xFF333638))
-                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = { addMember = false }),
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = {
+                                newMemberAvatarPath?.let { File(it).delete() }
+                                newMemberAvatarPath = null
+                                addMember = false
+                            }),
                         contentAlignment = Alignment.Center
                     ) { Icon(Icons.Filled.Close, contentDescription = "取消", tint = Color(0xFFFF8A80), modifier = Modifier.size(28.dp)) }
                     Box(
@@ -1257,6 +1276,17 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     if (n.isNotEmpty() && n !in members) {
                                         members = members + n
                                         prefs.edit().putString("members", JSONArray(members).toString()).apply()
+                                        newMemberAvatarPath?.let { source ->
+                                            runCatching {
+                                                val dir = File(context.filesDir, "member-avatars").apply { mkdirs() }
+                                                val target = File(dir, n.hashCode().toString() + "_avatar.jpg")
+                                                File(source).copyTo(target, overwrite = true)
+                                                prefs.edit().putString("member_avatar_" + n, target.absolutePath).apply()
+                                            }
+                                            File(source).delete()
+                                        }
+                                        newMemberAvatarPath = null
+                                        avatarRefresh++
                                         selected = n
                                     }
                                     addMember = false
