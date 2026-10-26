@@ -407,6 +407,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var exitingCategories by remember { mutableStateOf(setOf<String>()) }
     var enteringCategories by remember { mutableStateOf(setOf<String>()) }
     var draggingCategory by remember { mutableStateOf<String?>(null) }
+    var draggingMember by remember { mutableStateOf<String?>(null) }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
     var flipResetToken by remember { mutableIntStateOf(0) }
@@ -571,10 +572,41 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 }
             }
             Spacer(Modifier.height(18.dp))
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                members.forEachIndexed { index, member ->
-                    val selectedScale by animateFloatAsState(if (member == selected) 1f else .94f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "member")
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                state = rememberLazyListState(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                itemsIndexed(members, key = { _, member -> member }) { index, member ->
+                    val currentMembers = rememberUpdatedState(members)
                     var memberDragX by remember(member) { mutableFloatStateOf(0f) }
+                    var memberTilt by remember(member) { mutableFloatStateOf(0f) }
+                    var isMemberDragging by remember(member) { mutableStateOf(false) }
+                    val selectedScale by animateFloatAsState(
+                        targetValue = when {
+                            isMemberDragging -> 1.08f
+                            member == selected -> 1f
+                            else -> .94f
+                        },
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                        label = "member-lift-scale"
+                    )
+                    val memberReturnOffset by animateFloatAsState(
+                        targetValue = if (isMemberDragging) memberDragX else 0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+                        label = "member-drag-offset"
+                    )
+                    val memberReturnTilt by animateFloatAsState(
+                        targetValue = if (isMemberDragging) memberTilt else 0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                        label = "member-drag-tilt"
+                    )
+                    val memberElevation by animateDpAsState(
+                        targetValue = if (isMemberDragging) 22.dp else 0.dp,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
+                        label = "member-drag-elevation"
+                    )
                     val memberPillColor by androidx.compose.animation.animateColorAsState(
                         targetValue = if (member == selected) Color.Black else Color.Transparent,
                         animationSpec = tween(190),
@@ -586,13 +618,21 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         label = "member-selection-padding"
                     )
                     Column(
-                        Modifier.scale(selectedScale)
-                            .animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))
-                            .zIndex(if (memberDragX != 0f) 2f else 0f)
-                            .graphicsLayer { translationX = memberDragX }
+                        Modifier.animateItemPlacement(
+                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                        )
+                            .graphicsLayer {
+                                translationX = memberReturnOffset
+                                scaleX = selectedScale
+                                scaleY = selectedScale
+                                rotationZ = memberReturnTilt
+                            }
+                            .shadow(memberElevation, RoundedCornerShape(34.dp), clip = false)
+                            .zIndex(if (isMemberDragging) 10f else 0f)
+                            .animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.Stiffness.Low))
                             .clip(RoundedCornerShape(34.dp))
                             .background(memberPillColor)
-                            .pointerInput(member, members) {
+                            .pointerInput(member) {
                                 detectTapGestures(
                                     onTap = { flipResetToken++; selected = member },
                                     onDoubleTap = {
@@ -603,31 +643,50 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     }
                                 )
                             }
-                            .pointerInput(member, members) {
+                            .pointerInput(member) {
                                 var accumulated = 0f
                                 detectDragGesturesAfterLongPress(
-                                    onDragStart = { accumulated = 0f },
-                                    onDragEnd = { memberDragX = 0f; accumulated = 0f },
-                                    onDragCancel = { memberDragX = 0f; accumulated = 0f },
+                                    onDragStart = {
+                                        accumulated = 0f
+                                        memberDragX = 0f
+                                        memberTilt = 0f
+                                        isMemberDragging = true
+                                        draggingMember = member
+                                    },
+                                    onDragEnd = {
+                                        isMemberDragging = false
+                                        draggingMember = null
+                                        memberTilt = 0f
+                                        memberDragX = 0f
+                                        accumulated = 0f
+                                    },
+                                    onDragCancel = {
+                                        isMemberDragging = false
+                                        draggingMember = null
+                                        memberTilt = 0f
+                                        memberDragX = 0f
+                                        accumulated = 0f
+                                    },
                                     onDrag = { change, dragAmount ->
                                         change.consume()
                                         memberDragX += dragAmount.x
+                                        memberTilt = (dragAmount.x / size.width.coerceAtLeast(1) * 10f).coerceIn(-3f, 3f)
                                         accumulated += dragAmount.x
                                         val step = 64.dp.toPx()
-                                        if (accumulated > step && index < members.lastIndex) {
-                                            val reordered = members.toMutableList()
-                                            val item = reordered.removeAt(index)
-                                            reordered.add(index + 1, item)
+                                        val currentIndex = currentMembers.value.indexOf(member)
+                                        val direction = when {
+                                            accumulated >= step && currentIndex < currentMembers.value.lastIndex -> 1
+                                            accumulated <= -step && currentIndex > 0 -> -1
+                                            else -> 0
+                                        }
+                                        if (direction != 0) {
+                                            val reordered = currentMembers.value.toMutableList()
+                                            val item = reordered.removeAt(currentIndex)
+                                            reordered.add((currentIndex + direction).coerceIn(0, reordered.size), item)
                                             members = reordered
-                                            prefs.edit().putString("members", JSONArray(members).toString()).apply()
-                                            accumulated -= step
-                                        } else if (accumulated < -step && index > 0) {
-                                            val reordered = members.toMutableList()
-                                            val item = reordered.removeAt(index)
-                                            reordered.add(index - 1, item)
-                                            members = reordered
-                                            prefs.edit().putString("members", JSONArray(members).toString()).apply()
-                                            accumulated += step
+                                            prefs.edit().putString("members", JSONArray(reordered).toString()).apply()
+                                            memberDragX -= direction * step
+                                            accumulated -= direction * step
                                         }
                                     }
                                 )
@@ -666,8 +725,10 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         Text(member, color = Color.White, fontSize = 11.sp, maxLines = 1)
                     }
                 }
-                Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.padding(top = 9.dp).size(52.dp).clickable { memberText = ""; addMember = true }) {
-                    Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
+                item(key = "add-member") {
+                    Surface(color = Color.Transparent, shape = CircleShape, border = BorderStroke(1.5.dp, Color.LightGray), modifier = Modifier.padding(top = 9.dp).size(52.dp).clickable { memberText = ""; newMemberAvatarPath = null; addMember = true }) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Filled.Add, "添加成员", tint = Color.White, modifier = Modifier.size(26.dp)) }
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))
