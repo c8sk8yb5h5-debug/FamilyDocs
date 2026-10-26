@@ -1683,15 +1683,56 @@ private fun WalletCategoryCard(
                 onLongClick = null
             )
     ) {
-        Box(Modifier.fillMaxSize().graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }.background(Brush.linearGradient(gradient))) {
-            if (loadedCardBitmap != null) {
-                Image(bitmap = loadedCardBitmap, contentDescription = name, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { rotationY = if (flipped) 180f else 0f })
-                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
-            } else {
-                Icon(Icons.Filled.Add, contentDescription = if (flipped) "添加卡片背面照片" else "导入证件照片",
-                    tint = Ink.copy(alpha = .72f), modifier = Modifier.align(Alignment.Center).size(92.dp)
-                        .graphicsLayer { rotationY = if (flipped) 180f else 0f }.clickable { if (flipped) onImportBack() else onImport() })
+        // A narrow pearlescent shell remains visible around the photo, suggesting a real card edge.
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(Color(0xFFFDFDF9), gradient[0], gradient[1], Color(0xFF879395))
+                    )
+                )
+        ) {
+            Box(
+                Modifier.fillMaxSize()
+                    .padding(2.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Brush.linearGradient(gradient))
+            ) {
+                if (loadedCardBitmap != null) {
+                    Image(
+                        bitmap = loadedCardBitmap,
+                        contentDescription = name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                            .graphicsLayer { rotationY = if (flipped) 180f else 0f }
+                    )
+                    // Restrained directional sheen adds a coated-plastic feel without obscuring text.
+                    Box(
+                        Modifier.fillMaxSize().background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.10f),
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.055f)
+                                )
+                            )
+                        )
+                    )
+                    Box(
+                        Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+                            .background(Color.White.copy(alpha = 0.52f))
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = if (flipped) "添加卡片背面照片" else "导入证件照片",
+                        tint = Ink.copy(alpha = .72f),
+                        modifier = Modifier.align(Alignment.Center).size(92.dp)
+                            .graphicsLayer { rotationY = if (flipped) 180f else 0f }
+                            .clickable { if (flipped) onImportBack() else onImport() }
+                    )
+                }
             }
         }
     }
