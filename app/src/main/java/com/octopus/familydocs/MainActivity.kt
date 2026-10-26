@@ -137,8 +137,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
-        window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
+        window.statusBarColor = android.graphics.Color.rgb(17, 20, 38)
+        window.navigationBarColor = android.graphics.Color.rgb(17, 20, 38)
         restorePendingSharedImages()
         collectSharedImages(intent)
         File(filesDir, "updates/drag-test-image.jpg").delete()
