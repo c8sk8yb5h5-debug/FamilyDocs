@@ -1689,9 +1689,7 @@ private fun WalletCategoryCard(
                 .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(Color(0xFFFDFDF9), gradient[0], gradient[1], Color(0xFF879395)),
-                        start = Offset(0f, 0f),
-                        end = Offset(size.width, size.height)
+                        colors = listOf(Color(0xFFFDFDF9), gradient[0], gradient[1], Color(0xFF879395))
                     )
                 )
         ) {
