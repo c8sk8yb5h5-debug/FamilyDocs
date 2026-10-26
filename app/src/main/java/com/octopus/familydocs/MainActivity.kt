@@ -713,7 +713,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             else -> cardHeight + 16.dp + stackStep * (index - selectedIndex - 1)
                         }
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
-                        AnimatedVisibility(
+                        androidx.compose.animation.AnimatedVisibility(
                             visible = category !in exitingCategories,
                             enter = fadeIn(tween(220)) + expandVertically(animationSpec = tween(240)),
                             exit = fadeOut(tween(180)) + shrinkVertically(animationSpec = tween(180)),
