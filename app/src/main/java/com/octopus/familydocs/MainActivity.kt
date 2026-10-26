@@ -685,6 +685,23 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 }
             }
         }
+        // Fade the lower card stack smoothly into the screen background to avoid a hard cutoff.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .height(152.dp)
+                .background(
+                    Brush.verticalGradient(
+                        colorStops = arrayOf(
+                            0.0f to Color.Transparent,
+                            0.42f to ScreenBg.copy(alpha = 0.42f),
+                            0.76f to ScreenBg.copy(alpha = 0.82f),
+                            1.0f to ScreenBg
+                        )
+                    )
+                )
+        )
     }
 
     if (editingMember != null) {
