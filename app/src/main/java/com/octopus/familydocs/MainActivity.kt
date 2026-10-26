@@ -637,8 +637,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         label = "member-selection-padding"
                     )
                     Column(
-                        Modifier.animateItemPlacement(
-                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                        Modifier .animateItem(
+                            placementSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
                         )
                             .graphicsLayer {
                                 translationX = memberReturnOffset
