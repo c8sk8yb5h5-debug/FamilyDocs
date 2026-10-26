@@ -396,6 +396,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var viewingSharedImage by remember { mutableStateOf<Uri?>(null) }
     var viewingSharedImageVisible by remember { mutableStateOf(false) }
     var exitingCategories by remember { mutableStateOf(setOf<String>()) }
+    var enteringCategories by remember { mutableStateOf(setOf<String>()) }
     var draggingCategory by remember { mutableStateOf<String?>(null) }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
@@ -476,6 +477,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 if (removeDropTargeted) return@clickable
                                 flipResetToken++
                                 val newCategory = "card_" + System.currentTimeMillis()
+                                enteringCategories = enteringCategories + newCategory
                                 categories = categories + newCategory
                                 categoryOwners = categoryOwners + (newCategory to selected)
                                 prefs.edit().putString("categories", JSONArray(categories).toString()).putString("category_owners", JSONObject(categoryOwners).toString()).apply()
@@ -706,6 +708,16 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     if (ordered.isEmpty()) { }
                     ordered.forEachIndexed { index, category -> key(category) {
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
+                        val cardVisibilityState = remember(category) {
+                            androidx.compose.animation.core.MutableTransitionState(category !in enteringCategories)
+                        }
+                        LaunchedEffect(category, category in exitingCategories, category in enteringCategories) {
+                            cardVisibilityState.targetState = category !in exitingCategories
+                            if (category in enteringCategories) {
+                                delay(260)
+                                enteringCategories = enteringCategories - category
+                            }
+                        }
                         val selectedIndex = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
                         val targetOffset = when {
                             selectedIndex == null -> stackStep * index
@@ -715,7 +727,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         }
                         val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = category !in exitingCategories,
+                            visibleState = cardVisibilityState,
                             enter = fadeIn(tween(220)) + expandVertically(animationSpec = tween(240)),
                             exit = fadeOut(tween(180)) + shrinkVertically(animationSpec = tween(180)),
                             modifier = Modifier.fillMaxWidth().height(cardHeight).offset(y = animatedOffset)
