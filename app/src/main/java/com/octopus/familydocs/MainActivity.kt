@@ -396,6 +396,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
     var viewingSharedImage by remember { mutableStateOf<Uri?>(null) }
     var viewingSharedImageVisible by remember { mutableStateOf(false) }
     var exitingCategories by remember { mutableStateOf(setOf<String>()) }
+    var draggingCategory by remember { mutableStateOf<String?>(null) }
     var confirmDeleteCategory by remember { mutableStateOf<String?>(null) }
     var pendingGalleryExport by remember { mutableStateOf<File?>(null) }
     var flipResetToken by remember { mutableIntStateOf(0) }
@@ -718,7 +719,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             enter = fadeIn(tween(220)) + expandVertically(animationSpec = tween(240)),
                             exit = fadeOut(tween(180)) + shrinkVertically(animationSpec = tween(180)),
                             modifier = Modifier.fillMaxWidth().height(cardHeight).offset(y = animatedOffset)
-                                .zIndex(if (expanded == category) ordered.size + 2f else (ordered.size - index).toFloat())
+                                .zIndex(when {
+                                    draggingCategory == category -> ordered.size + 4f
+                                    expanded == category -> ordered.size + 2f
+                                    else -> (ordered.size - index).toFloat()
+                                })
                         ) {
                         WalletCategoryCard(
                             name = category,
@@ -746,6 +751,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onDoubleClick = { flipResetToken++; editingCategory = category },
+                            onReorderStart = { draggingCategory = category },
+                            onReorderEnd = { draggingCategory = null },
                             onReorder = reorderCard,
                             onImport = { flipResetToken++; importCategory = category; importSide = "front"; importer.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                             onDelete = { doc -> File(doc.path).delete(); docs = docs.filterNot { it == doc }; writeDocs(prefs, docs) }
@@ -1202,6 +1209,8 @@ private fun WalletCategoryCard(
     resetFlipToken: Int,
     onClick: () -> Unit,
     onDoubleClick: () -> Unit,
+    onReorderStart: () -> Unit,
+    onReorderEnd: () -> Unit,
     onReorder: (String, Int) -> Unit,
     onImport: () -> Unit,
     onDelete: (Doc) -> Unit
@@ -1283,13 +1292,13 @@ private fun WalletCategoryCard(
     Box(
         modifier
             .scale(scale)
-            .shadow(elevation = cardElevation, shape = cardShape, clip = false)
             .graphicsLayer {
                 translationY = animatedReorderOffset
                 scaleX = animatedReorderScale
                 scaleY = animatedReorderScale
                 rotationZ = animatedReorderTilt
             }
+            .shadow(elevation = cardElevation, shape = cardShape, clip = false)
             .clip(cardShape)
             .drawWithContent {
                 drawContent()
@@ -1456,9 +1465,25 @@ private fun WalletCategoryCard(
             .pointerInput(name) {
                 var accumulatedDrag = 0f
                 detectDragGesturesAfterLongPress(
-                    onDragStart = { accumulatedDrag = 0f; reorderDragOffset = 0f; reorderTiltTarget = 0f; isReordering = true },
-                    onDragEnd = { accumulatedDrag = 0f; isReordering = false; reorderTiltTarget = 0f },
-                    onDragCancel = { accumulatedDrag = 0f; isReordering = false; reorderTiltTarget = 0f },
+                    onDragStart = {
+                        accumulatedDrag = 0f
+                        reorderDragOffset = 0f
+                        reorderTiltTarget = 0f
+                        isReordering = true
+                        onReorderStart()
+                    },
+                    onDragEnd = {
+                        accumulatedDrag = 0f
+                        isReordering = false
+                        reorderTiltTarget = 0f
+                        onReorderEnd()
+                    },
+                    onDragCancel = {
+                        accumulatedDrag = 0f
+                        isReordering = false
+                        reorderTiltTarget = 0f
+                        onReorderEnd()
+                    },
                     onDrag = { change, amount ->
                         change.consume()
                         reorderDragOffset += amount.y
