@@ -1131,9 +1131,11 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
             value = withContext(Dispatchers.IO) { decodeUriBitmap(context, uri, 3000) }
         }
         val loadedSharedBitmap = fullBitmap
-        LaunchedEffect(uri) {
+        LaunchedEffect(uri, loadedSharedBitmap) {
             sharedPreviewProgress.snapTo(0f)
-            sharedPreviewProgress.animateTo(1f, animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            if (loadedSharedBitmap != null) {
+                sharedPreviewProgress.animateTo(1f, animationSpec = tween(280, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            }
         }
         val sourceBounds = sharedImageBounds[uri]
         Dialog(
