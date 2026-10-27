@@ -922,7 +922,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 Column(
                     modifier = Modifier.width(240.dp).heightIn(min = 360.dp)
                         .clip(RoundedCornerShape(120.dp))
-                        .background(Color.Black)
+                        .background(Color(0xFF302B66))
                         .padding(horizontal = 20.dp, vertical = 34.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -1271,7 +1271,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 Column(
                     modifier = Modifier.width(240.dp).heightIn(min = 360.dp)
                         .clip(RoundedCornerShape(120.dp))
-                        .background(Color.Black)
+                        .background(Color(0xFF302B66))
                         .padding(horizontal = 20.dp, vertical = 34.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(20.dp)
