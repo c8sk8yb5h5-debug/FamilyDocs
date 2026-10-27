@@ -126,10 +126,10 @@ import java.net.URL
 import kotlin.math.absoluteValue
 import kotlin.math.roundToInt
 
-private val ScreenBg = Color(0xFF262728)
-private val HeaderBg = Color(0xFF3A3B3D)
-private val Ink = Color(0xFF24292A)
-private val Pastels = listOf(Color(0xFF9ADDE7), Color(0xFF9FE8D3), Color(0xFFFFE5A5), Color(0xFFEBC9E0), Color(0xFFF2F0E7))
+private val ScreenBg = Color(0xFF111426)
+private val HeaderBg = Color(0xFF252A49)
+private val Ink = Color(0xFF20213A)
+private val Pastels = listOf(Color(0xFF62E8F5), Color(0xFF66F0B5), Color(0xFFFFC857), Color(0xFFFF75B9), Color(0xFF9D8CFF))
 private data class Doc(val name: String, val path: String, val category: String, val owner: String, val side: String = "front")
 
 class MainActivity : ComponentActivity() {
@@ -137,8 +137,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(32, 33, 34)
-        window.navigationBarColor = android.graphics.Color.rgb(32, 33, 34)
+        window.statusBarColor = android.graphics.Color.rgb(17, 20, 38)
+        window.navigationBarColor = android.graphics.Color.rgb(17, 20, 38)
         restorePendingSharedImages()
         collectSharedImages(intent)
         File(filesDir, "updates/drag-test-image.jpg").delete()
@@ -627,7 +627,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         label = "member-drag-elevation"
                     )
                     val memberPillColor by androidx.compose.animation.animateColorAsState(
-                        targetValue = if (member == selected) Color.Black else Color.Transparent,
+                        targetValue = if (member == selected) Color(0xFF6558F5) else Color.Transparent,
                         animationSpec = tween(190),
                         label = "member-selection-color"
                     )
@@ -723,7 +723,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         val savedAvatarScale = prefs.getFloat("member_avatar_scale_" + member, 1f)
                         val savedAvatarX = prefs.getFloat("member_avatar_x_" + member, 0f)
                         val savedAvatarY = prefs.getFloat("member_avatar_y_" + member, 0f)
-                        Surface(color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
+                        Surface(color = listOf(Color(0xFFFFC857), Color(0xFF62E8F5), Color(0xFFB29AFF), Color(0xFFFF8FC7))[index % 4], shape = CircleShape, modifier = Modifier.size(50.dp)) {
                             Box(contentAlignment = Alignment.Center) {
                                 if (loadedAvatarBitmap != null) {
                                     Image(
@@ -928,7 +928,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     Surface(
-                        color = listOf(Color(0xFFE8D9C6), Color(0xFFCAD8D9), Color(0xFFD9D1E8), Color(0xFFE9D3CC))[members.indexOf(member).coerceAtLeast(0) % 4],
+                        color = listOf(Color(0xFFFFC857), Color(0xFF62E8F5), Color(0xFFB29AFF), Color(0xFFFF8FC7))[members.indexOf(member).coerceAtLeast(0) % 4],
                         shape = CircleShape,
                         modifier = Modifier.size(184.dp).clickable {
                             pendingAvatarMember = member
@@ -1023,7 +1023,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         }
                     }
                     Surface(
-                        color = Color(0xFFB2F0DF),
+                        color = Color(0xFF66F0B5),
                         shape = CircleShape,
                         modifier = Modifier.size(58.dp).clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -1460,11 +1460,11 @@ private fun WalletCategoryCard(
     }
     val loadedCardBitmap = bitmap
     val gradient = when (name.hashCode().absoluteValue % 5) {
-        0 -> listOf(Color(0xFFE0F8FC), Color(0xFF9EDDE9), Color(0xFFB8EAF0))
-        1 -> listOf(Color(0xFFE0FFF4), Color(0xFF9CE6D1), Color(0xFFB5F0DF))
-        2 -> listOf(Color(0xFFFFF1C9), Color(0xFFFFDFA0), Color(0xFFFFEAC0))
-        3 -> listOf(Color(0xFFF7E4F0), Color(0xFFE8C3DD), Color(0xFFF1D8E8))
-        else -> listOf(Color(0xFFF8F7F1), Color(0xFFE5E3DA), Color(0xFFF2F0E7))
+        0 -> listOf(Color(0xFFDDFBFF), Color(0xFF62E8F5), Color(0xFF9CF4FF))
+        1 -> listOf(Color(0xFFD9FFEC), Color(0xFF66F0B5), Color(0xFFB6FF83))
+        2 -> listOf(Color(0xFFFFF2B5), Color(0xFFFFC857), Color(0xFFFFAD66))
+        3 -> listOf(Color(0xFFFFDDF0), Color(0xFFFF75B9), Color(0xFFFF9A91))
+        else -> listOf(Color(0xFFE8E0FF), Color(0xFFAA91FF), Color(0xFF7EA8FF))
     }
     Box(
         modifier
