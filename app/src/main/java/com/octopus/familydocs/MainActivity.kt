@@ -602,6 +602,9 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     var memberDragX by remember(member) { mutableFloatStateOf(0f) }
                     var memberTilt by remember(member) { mutableFloatStateOf(0f) }
                     var isMemberDragging by remember(member) { mutableStateOf(false) }
+                    val memberSettleOffset = remember(member) { androidx.compose.animation.core.Animatable(0f) }
+                    val memberDragScope = rememberCoroutineScope()
+                    val memberVelocityTracker = remember(member) { VelocityTracker() }
                     val selectedScale by animateFloatAsState(
                         targetValue = when {
                             isMemberDragging -> 1.08f
@@ -611,11 +614,7 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
                         label = "member-lift-scale"
                     )
-                    val memberReturnOffset by animateFloatAsState(
-                        targetValue = if (isMemberDragging) memberDragX else 0f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-                        label = "member-drag-offset"
-                    )
+                    val memberReturnOffset = if (isMemberDragging) memberDragX else memberSettleOffset.value
                     val memberReturnTilt by animateFloatAsState(
                         targetValue = if (isMemberDragging) memberTilt else 0f,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
@@ -667,27 +666,63 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = {
                                         accumulated = 0f
+                                        memberVelocityTracker.resetTracking()
+                                        memberDragScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                                            memberSettleOffset.snapTo(0f)
+                                        }
                                         memberDragX = 0f
                                         memberTilt = 0f
                                         isMemberDragging = true
                                         draggingMember = member
                                     },
                                     onDragEnd = {
+                                        val step = 64.dp.toPx()
+                                        val velocityX = memberVelocityTracker.calculateVelocity().x
+                                        if (velocityX.absoluteValue > 1700f) {
+                                            val direction = if (velocityX > 0f) 1 else -1
+                                            val currentIndex = currentMembers.value.indexOf(member)
+                                            if ((direction > 0 && currentIndex < currentMembers.value.lastIndex) ||
+                                                (direction < 0 && currentIndex > 0)) {
+                                                val reordered = currentMembers.value.toMutableList()
+                                                val item = reordered.removeAt(currentIndex)
+                                                reordered.add((currentIndex + direction).coerceIn(0, reordered.size), item)
+                                                members = reordered
+                                                prefs.edit().putString("members", JSONArray(reordered).toString()).apply()
+                                                memberDragX -= direction * step
+                                            }
+                                        }
+                                        val releaseX = memberDragX
                                         isMemberDragging = false
                                         draggingMember = null
                                         memberTilt = 0f
                                         memberDragX = 0f
                                         accumulated = 0f
+                                        memberDragScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                                            memberSettleOffset.snapTo(releaseX)
+                                            memberSettleOffset.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                                            )
+                                        }
                                     },
                                     onDragCancel = {
+                                        val releaseX = memberDragX
                                         isMemberDragging = false
                                         draggingMember = null
                                         memberTilt = 0f
                                         memberDragX = 0f
                                         accumulated = 0f
+                                        memberDragScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                                            memberSettleOffset.snapTo(releaseX)
+                                            memberSettleOffset.animateTo(
+                                                0f,
+                                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                                            )
+                                        }
                                     },
                                     onDrag = { change, dragAmount ->
                                         change.consume()
+                                        memberVelocityTracker.addPosition(change.uptimeMillis, change.position)
                                         memberDragX += dragAmount.x
                                         memberTilt = (dragAmount.x / size.width.coerceAtLeast(1) * 10f).coerceIn(-3f, 3f)
                                         accumulated += dragAmount.x
@@ -1408,11 +1443,8 @@ private fun WalletCategoryCard(
     var isReordering by remember(name) { mutableStateOf(false) }
     var reorderDragOffset by remember(name) { mutableFloatStateOf(0f) }
     var reorderTiltTarget by remember(name) { mutableFloatStateOf(0f) }
-    val animatedReorderOffset by animateFloatAsState(
-        targetValue = if (isReordering) reorderDragOffset else 0f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-        label = "card-reorder-offset"
-    )
+    val reorderReleaseOffset = remember(name) { androidx.compose.animation.core.Animatable(0f) }
+    val reorderDragScope = rememberCoroutineScope()
     val animatedReorderScale by animateFloatAsState(
         targetValue = if (isReordering) 1.045f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
@@ -1472,7 +1504,8 @@ private fun WalletCategoryCard(
         modifier
             .scale(scale)
             .graphicsLayer {
-                translationY = animatedReorderOffset + if (pressed) pressOffsetPx else 0f
+                translationY = (if (isReordering) reorderDragOffset else reorderReleaseOffset.value) +
+                    if (pressed) pressOffsetPx else 0f
                 scaleX = animatedReorderScale
                 scaleY = animatedReorderScale
                 rotationZ = animatedReorderTilt
@@ -1670,28 +1703,47 @@ private fun WalletCategoryCard(
             }
             .pointerInput(name) {
                 var accumulatedDrag = 0f
+                val velocityTracker = VelocityTracker()
+                fun settleCardDrag() {
+                    val releaseY = reorderDragOffset
+                    accumulatedDrag = 0f
+                    isReordering = false
+                    reorderTiltTarget = 0f
+                    onReorderEnd()
+                    reorderDragScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                        reorderReleaseOffset.snapTo(releaseY)
+                        reorderReleaseOffset.animateTo(
+                            0f,
+                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                        )
+                        reorderDragOffset = 0f
+                    }
+                }
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         accumulatedDrag = 0f
+                        velocityTracker.resetTracking()
+                        reorderDragScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                            reorderReleaseOffset.snapTo(0f)
+                        }
                         reorderDragOffset = 0f
                         reorderTiltTarget = 0f
                         isReordering = true
                         onReorderStart()
                     },
                     onDragEnd = {
-                        accumulatedDrag = 0f
-                        isReordering = false
-                        reorderTiltTarget = 0f
-                        onReorderEnd()
+                        val velocityY = velocityTracker.calculateVelocity().y
+                        if (velocityY.absoluteValue > 1850f) {
+                            val direction = if (velocityY > 0f) 1 else -1
+                            onReorder(name, direction)
+                            reorderDragOffset -= direction * reorderThresholdPx
+                        }
+                        settleCardDrag()
                     },
-                    onDragCancel = {
-                        accumulatedDrag = 0f
-                        isReordering = false
-                        reorderTiltTarget = 0f
-                        onReorderEnd()
-                    },
+                    onDragCancel = { settleCardDrag() },
                     onDrag = { change, amount ->
                         change.consume()
+                        velocityTracker.addPosition(change.uptimeMillis, change.position)
                         reorderDragOffset += amount.y
                         reorderTiltTarget = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-3.5f, 3.5f)
                         accumulatedDrag += amount.y
