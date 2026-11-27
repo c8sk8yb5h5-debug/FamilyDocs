@@ -295,40 +295,98 @@ class MainActivity : ComponentActivity() {
                 }.show()
             return
         }
-        Toast.makeText(this, "正在下载更新包…", Toast.LENGTH_SHORT).show()
+
+        val progressDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("正在下载更新")
+            .setMessage("请稍候…")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
         Thread {
-            var file: File? = null
+            var partialFile: File? = null
             try {
                 val dir = File(filesDir, "updates").apply { mkdirs() }
-                val targetFile = File(dir, "FamilyDocs-update.apk").also { if (it.exists()) it.delete() }
-                file = targetFile
+                val targetFile = File(dir, "FamilyDocs-update.apk")
+                partialFile = File(dir, "FamilyDocs-update.apk.part")
+                targetFile.delete()
+                partialFile.delete()
+
                 val conn = (URL(url).openConnection() as HttpURLConnection).apply {
                     connectTimeout = 20000
-                    readTimeout = 30000
+                    readTimeout = 45000
                     instanceFollowRedirects = true
                     setRequestProperty("User-Agent", "FamilyDocs-Android")
+                    setRequestProperty("Accept", "application/vnd.android.package-archive")
                 }
+                val expectedLength: Long
                 try {
-                    if (conn.responseCode != 200) throw IllegalStateException("HTTP ${conn.responseCode}")
-                    conn.inputStream.use { input -> targetFile.outputStream().use { output -> input.copyTo(output) } }
-                } finally { conn.disconnect() }
-                if (!targetFile.exists() || targetFile.length() < 100000) throw IllegalStateException("APK 文件不完整")
+                    if (conn.responseCode != HttpURLConnection.HTTP_OK) {
+                        throw IllegalStateException("服务器返回 HTTP ${conn.responseCode}")
+                    }
+                    expectedLength = conn.contentLengthLong
+                    conn.inputStream.use { input ->
+                        partialFile.outputStream().buffered().use { output -> input.copyTo(output) }
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+
+                if (!partialFile.exists() || partialFile.length() < 100000L) {
+                    throw IllegalStateException("下载文件不完整")
+                }
+                if (expectedLength > 0L && partialFile.length() != expectedLength) {
+                    throw IllegalStateException("下载未完成，请重试")
+                }
+                val archive = packageManager.getPackageArchiveInfo(partialFile.absolutePath, 0)
+                    ?: throw IllegalStateException("下载文件不是有效的 APK")
+                if (archive.packageName != packageName) {
+                    throw IllegalStateException("安装包与当前应用不匹配")
+                }
+                val downloadedVersion = archive.versionName.orEmpty()
+                if (compareVersions(downloadedVersion, BuildConfig.VERSION_NAME) <= 0) {
+                    throw IllegalStateException("安装包版本无效，请稍后重试")
+                }
+                if (!partialFile.renameTo(targetFile)) {
+                    throw IllegalStateException("无法保存更新包")
+                }
+
                 runOnUiThread {
+                    progressDialog.dismiss()
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     try {
                         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", targetFile)
                         val install = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-                            data = uri
+                            setDataAndType(uri, "application/vnd.android.package-archive")
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
                         }
                         startActivity(install)
-                    } catch (_: Exception) {
-                        Toast.makeText(this, "无法打开系统安装器，请检查安装未知应用权限", Toast.LENGTH_LONG).show()
+                    } catch (error: Exception) {
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("无法启动安装程序")
+                            .setMessage(error.message ?: "请检查安装权限后重试。")
+                            .setPositiveButton("知道了", null)
+                            .show()
                     }
                 }
-            } catch (_: Exception) {
-                file?.delete()
-                runOnUiThread { Toast.makeText(this, "更新下载失败，请检查网络后重试", Toast.LENGTH_LONG).show() }
+            } catch (error: Exception) {
+                partialFile?.delete()
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    if (!isFinishing && !isDestroyed) {
+                        val reason = when (error) {
+                            is java.net.SocketTimeoutException -> "网络连接超时"
+                            else -> error.message?.take(100) ?: "未知错误"
+                        }
+                        android.app.AlertDialog.Builder(this)
+                            .setTitle("更新下载失败")
+                            .setMessage(reason)
+                            .setPositiveButton("重试") { _, _ -> downloadUpdate(url) }
+                            .setNegativeButton("取消", null)
+                            .show()
+                    }
+                }
             }
         }.start()
     }
@@ -637,7 +695,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     )
                     Column(
                         Modifier .animateItem(
-                            placementSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
+                            placementSpec = if (isMemberDragging) null else
+                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
                         )
                             .graphicsLayer {
                                 translationX = memberReturnOffset
@@ -857,7 +916,10 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                             index < selectedIndex -> -cardHeight + stackStep * (index - selectedIndex)
                             else -> cardHeight + 16.dp + stackStep * (index - selectedIndex - 1)
                         }
-                        val animatedOffset by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
+                        val animatedOffsetState by animateDpAsState(targetOffset, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow), label = "card-stack-position")
+                        // The dragged card snaps to its new logical slot; its drag offset compensates
+                        // for that slot change. Animating both offsets causes a visible return-and-jump.
+                        val animatedOffset = if (draggingCategory == category) targetOffset else animatedOffsetState
                         androidx.compose.animation.AnimatedVisibility(
                             visibleState = cardVisibilityState,
                             enter = fadeIn(tween(220)) + expandVertically(animationSpec = tween(240)),

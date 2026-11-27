@@ -27,3 +27,15 @@
 - Track gesture velocity and allow a restrained one-item flick reorder only when the release velocity is clearly intentional. Keep existing distance-based reorder thresholds and bounds checks.
 - Keep the lifted item above neighboring items, preserve spring placement of surrounding items, and restore tilt/elevation as the item settles.
 - Keep gesture handling native to Compose; no additional reorder or physics dependency is needed for the current small, fixed collections.
+
+
+## Launcher icon
+
+- Use the supplied blue-gradient identity-card concept: a pale rounded-square canvas, a slightly offset light-blue rear card, and a vivid blue-to-periwinkle front ID card with a white person silhouette and two concise information lines.
+- Keep the artwork centered and legible under Android adaptive-icon masks; preserve a light background and a restrained glass highlight.
+
+## Reorder stability
+
+- While a family-member pill is being dragged, disable placement animation for that active item only; keep neighboring items spring-animated.
+- While a category card is being dragged, apply its logical stack position immediately and use only the pointer-following drag offset for visual displacement. Never animate both the underlying slot and the drag compensation for the same active card.
+- After release or cancellation, transition from the captured visual offset to rest without a positional snap or reverse jump.
