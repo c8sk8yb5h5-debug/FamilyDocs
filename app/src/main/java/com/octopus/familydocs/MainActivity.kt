@@ -1394,10 +1394,11 @@ private fun WalletCategoryCard(
 ) {
     val context = LocalContext.current
     val reorderThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) { 68.dp.toPx() }
+    val pressOffsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { 1.5.dp.toPx() }
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        if (pressed) .985f else 1f,
+        if (pressed) .978f else 1f,
         spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = 360f),
         label = "wallet-card-scale"
     )
@@ -1413,7 +1414,7 @@ private fun WalletCategoryCard(
         label = "card-reorder-offset"
     )
     val animatedReorderScale by animateFloatAsState(
-        targetValue = if (isReordering) 1.035f else 1f,
+        targetValue = if (isReordering) 1.045f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "card-reorder-lift"
     )
@@ -1424,9 +1425,10 @@ private fun WalletCategoryCard(
     )
     val cardElevation by animateDpAsState(
         targetValue = when {
-            isReordering -> 30.dp
+            isReordering -> 32.dp
             isDropTargeted || isFoilApplying -> 24.dp
-            else -> 12.dp
+            pressed -> 8.dp
+            else -> 16.dp
         },
         animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "card-interaction-elevation"
@@ -1470,12 +1472,18 @@ private fun WalletCategoryCard(
         modifier
             .scale(scale)
             .graphicsLayer {
-                translationY = animatedReorderOffset
+                translationY = animatedReorderOffset + if (pressed) pressOffsetPx else 0f
                 scaleX = animatedReorderScale
                 scaleY = animatedReorderScale
                 rotationZ = animatedReorderTilt
             }
-            .shadow(elevation = cardElevation, shape = cardShape, clip = false)
+            .shadow(
+                elevation = cardElevation,
+                shape = cardShape,
+                clip = false,
+                ambientColor = Color(0x99070B20),
+                spotColor = Color(0xCC050817)
+            )
             .clip(cardShape)
             .drawWithContent {
                 drawContent()
@@ -1568,6 +1576,27 @@ private fun WalletCategoryCard(
                         ),
                         alpha = (0.5f + 0.5f * progress) * intensity,
                         blendMode = androidx.compose.ui.graphics.BlendMode.Screen
+                    )
+                }
+                // A fine raised rim and a low-contrast directional reflection make the card read as a solid object.
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.78f),
+                            Color.White.copy(alpha = 0.16f),
+                            Color.Black.copy(alpha = 0.20f)
+                        )
+                    ),
+                    style = Stroke(width = 1.dp.toPx())
+                )
+                if (isReordering) {
+                    val sheenShift = (reorderTiltTarget / 3.5f).coerceIn(-1f, 1f) * size.width * 0.18f
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.22f), Color.Transparent),
+                            start = Offset(size.width * 0.28f + sheenShift, 0f),
+                            end = Offset(size.width * 0.72f + sheenShift, size.height)
+                        )
                     )
                 }
             }
@@ -1664,7 +1693,7 @@ private fun WalletCategoryCard(
                     onDrag = { change, amount ->
                         change.consume()
                         reorderDragOffset += amount.y
-                        reorderTiltTarget = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-2.5f, 2.5f)
+                        reorderTiltTarget = (amount.x / size.width.coerceAtLeast(1) * 18f).coerceIn(-3.5f, 3.5f)
                         accumulatedDrag += amount.y
                         if (kotlin.math.abs(accumulatedDrag) >= reorderThresholdPx) {
                             val direction = if (accumulatedDrag > 0f) 1 else -1
@@ -1689,13 +1718,17 @@ private fun WalletCategoryCard(
                 .graphicsLayer { rotationY = flipRotation; cameraDistance = 18 * density }
                 .background(
                     Brush.linearGradient(
-                        colors = listOf(Color(0xFFFDFDF9), gradient[0], gradient[1], Color(0xFF879395))
+                        colors = listOf(Color(0xFFFFFEF8), gradient[0], gradient[1], gradient[2], Color(0xFF596174))
                     )
+                )
+                .border(
+                    BorderStroke(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.92f), gradient[0], Color(0xFF596174)))),
+                    cardShape
                 )
         ) {
             Box(
                 Modifier.fillMaxSize()
-                    .padding(2.dp)
+                    .padding(start = 2.dp, top = 1.dp, end = 2.dp, bottom = 5.dp)
                     .clip(RoundedCornerShape(18.dp))
                     .background(Brush.linearGradient(gradient))
             ) {
@@ -1712,16 +1745,20 @@ private fun WalletCategoryCard(
                         Modifier.fillMaxSize().background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color.White.copy(alpha = 0.10f),
+                                    Color.White.copy(alpha = 0.14f),
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.055f)
+                                    Color.Black.copy(alpha = 0.075f)
                                 )
                             )
                         )
                     )
                     Box(
                         Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
-                            .background(Color.White.copy(alpha = 0.52f))
+                            .background(Color.White.copy(alpha = 0.72f))
+                    Box(
+                        Modifier.fillMaxWidth().height(1.dp).align(Alignment.BottomCenter)
+                            .background(Color.Black.copy(alpha = 0.16f))
+                    )
                     )
                 } else {
                     Icon(
