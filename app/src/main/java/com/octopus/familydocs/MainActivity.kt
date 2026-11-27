@@ -1755,10 +1755,10 @@ private fun WalletCategoryCard(
                     Box(
                         Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
                             .background(Color.White.copy(alpha = 0.72f))
+                    )
                     Box(
                         Modifier.fillMaxWidth().height(1.dp).align(Alignment.BottomCenter)
                             .background(Color.Black.copy(alpha = 0.16f))
-                    )
                     )
                 } else {
                     Icon(
