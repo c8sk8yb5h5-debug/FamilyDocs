@@ -19,3 +19,11 @@
 - Pressing compresses the card slightly and lowers its elevation; long-press reorder lifts and enlarges it, increases the shadow, and uses restrained tilt with a subtle angle-following reflection.
 - Keep document imagery crisp. Never place bright holographic or glossy effects over identity text; reserve the stronger holographic treatment for the existing drop-feedback state.
 - Preserve all existing import, flip, drag-and-drop, reorder, and thumbnail-to-preview interactions. Use native Compose drawing and animation primitives; do not add a visual-effects dependency for these treatments.
+
+## Physical interaction — phase 2
+
+- During long-press reorder, category cards and family-member pills must follow the pointer directly rather than visually lagging behind it.
+- On release or cancellation, preserve the final drag displacement and settle it back with a damped spring; do not snap abruptly to the resting position.
+- Track gesture velocity and allow a restrained one-item flick reorder only when the release velocity is clearly intentional. Keep existing distance-based reorder thresholds and bounds checks.
+- Keep the lifted item above neighboring items, preserve spring placement of surrounding items, and restore tilt/elevation as the item settles.
+- Keep gesture handling native to Compose; no additional reorder or physics dependency is needed for the current small, fixed collections.
