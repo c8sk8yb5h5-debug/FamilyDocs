@@ -39,3 +39,11 @@
 - While a family-member pill is being dragged, disable placement animation for that active item only; keep neighboring items spring-animated.
 - While a category card is being dragged, apply its logical stack position immediately and use only the pointer-following drag offset for visual displacement. Never animate both the underlying slot and the drag compensation for the same active card.
 - After release or cancellation, transition from the captured visual offset to rest without a positional snap or reverse jump.
+
+
+## Focused card view and bottom fade
+
+- Tapping a document card may bring it into the focused stack position for front/back interaction, but must not scale up the tapped card. Its physical size remains identical to the resting card size.
+- Keep the card-stack viewport at least as tall as the visible content area, even when the focused stack contains only one or two cards.
+- Anchor a soft vertical fade to the bottom edge of the viewport so document imagery transitions into the deep-indigo app background. Avoid a hard blank block or an abrupt crop; keep the system navigation area visually continuous with the app canvas.
+- Preserve the existing stacked card geometry, horizontal swipe-to-flip behavior, long-press reorder, and photo import interactions.
