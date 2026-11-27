@@ -845,30 +845,15 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                 }
             }
             Spacer(Modifier.height(12.dp))
-            BoxWithConstraints(
-                Modifier.weight(1f).fillMaxWidth()
-                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                    .drawWithContent {
-                        drawContent()
-                        // Alpha-mask the lower card stack to true transparency, avoiding a visible overlay edge.
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0.0f to Color.White,
-                                    0.58f to Color.White,
-                                    0.82f to Color.White.copy(alpha = 0.42f),
-                                    1.0f to Color.Transparent
-                                ),
-                                startY = size.height - 190.dp.toPx(),
-                                endY = size.height
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    }
-                    .verticalScroll(scroll, enabled = expanded == null)
-                    .then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier)
-                    .padding(bottom = 26.dp)
-            ) {
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                // Keep the scroll viewport bounded so the card stack can occupy the full visible area.
+                val viewportHeight = maxHeight
+                Box(
+                    Modifier.fillMaxSize()
+                        .verticalScroll(scroll, enabled = expanded == null)
+                        .then(if (expanded != null) Modifier.pointerInput(expanded) { var verticalDistance = 0f; detectVerticalDragGestures(onDragStart = { verticalDistance = 0f }, onDragEnd = { if (verticalDistance.absoluteValue > 42f) { expanded = null; flipResetToken++ } }, onVerticalDrag = { change, amount -> change.consume(); verticalDistance += amount }) } else Modifier)
+                        .padding(bottom = 26.dp)
+                ) {
                 val cardHeight = maxWidth / 1.586f
                 val stackStep = 68.dp
                 val stackStepPx = with(LocalDensity.current) { stackStep.toPx() }
@@ -893,9 +878,10 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                     }
                 }
                 val selectedIndexForHeight = ordered.indexOf(expanded).takeIf { expanded != null && it >= 0 }
-                val stackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
+                val contentStackHeight = if (selectedIndexForHeight == null) cardHeight + stackStep * (ordered.size - 1)
                     else cardHeight + stackStep * (ordered.lastIndex - selectedIndexForHeight).coerceAtLeast(0)
-                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) 120.dp else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
+                val stackHeight = maxOf(contentStackHeight, viewportHeight)
+                Box(Modifier.fillMaxWidth().height(if (ordered.isEmpty()) viewportHeight else stackHeight).animateContentSize(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow))) {
                     if (ordered.isEmpty()) { }
                     ordered.forEachIndexed { index, category -> key(category) {
                         val categoryDocs = docs.filter { it.owner == selected && matchesCategory(it.category, category) }
@@ -949,11 +935,8 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                                     onSharedImagesConsumed(uris)
                                 }
                             },
-                            modifier = Modifier.fillMaxSize().graphicsLayer {
-                                val lifting = if (expanded == category) 1.015f else 1f
-                                scaleX = lifting
-                                scaleY = lifting
-                            },
+                            // Selection changes stack order only; the tapped document keeps its natural size.
+                            modifier = Modifier.fillMaxSize(),
                             resetFlipToken = flipResetToken,
                             onClick = { flipResetToken++; expanded = if (expanded == category) null else category; importCategory = category },
                             onDoubleClick = { flipResetToken++; editingCategory = category },
@@ -966,6 +949,18 @@ private fun FamilyHome(sharedImageUris: List<Uri> = emptyList(), onSharedImagesC
                         }
                     } }
                 }
+                }
+                // Fade the lower edge into the app canvas even when the stack is shorter than the viewport.
+                Box(
+                    Modifier.align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(148.dp)
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color.Transparent, ScreenBg.copy(alpha = 0.72f), ScreenBg)
+                            )
+                        )
+                )
             }
         }
     }
